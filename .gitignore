@@ -1,0 +1,27 @@
+# 构建生成目录
+debug/
+release/
+build*/
+
+# 编译中间文件
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# qmake 生成的文件
+Makefile
+Makefile.*
+.qmake.stash
+
+# Qt Creator 用户配置（如果使用过）
+*.pro.user
+*.pro.user.*
+
+# 其他临时文件
+*.swp
+*~
