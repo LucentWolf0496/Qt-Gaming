@@ -1,10 +1,10 @@
 #include <QApplication>
-#include <QLabel>
+#include "game.h"
 
 int main(int argc, char *argv[])
 {
-    QApplication app(argc, argv);
-    QLabel label("test QT coding!");
-    label.show();
-    return app.exec();
+    QApplication a(argc, argv);
+    Game game;
+    game.show();
+    return a.exec();
 }
