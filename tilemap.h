@@ -1,23 +1,30 @@
 #ifndef TILEMAP_H
 #define TILEMAP_H
 
-#include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QVector>
-
-class Tile;
+#include "tile.h"
+#include "maploader.h"
 
 class TileMap
 {
 public:
     TileMap();
-    void buildMap(QGraphicsScene *scene);   // 构建地图（添加瓦片到场景）
-    bool collidesWithWall(QGraphicsItem *item) const; // 碰撞检测
+    ~TileMap();
+
+    bool loadFromFile(const QString &jsonPath, QGraphicsScene *scene);
+    void clear();
+
+    bool collidesWithWall(QGraphicsItem *item) const;
+    const QVector<Portal>& getPortals() const { return portals; }
+    QPointF getPlayerStart() const { return playerStart; }
 
 private:
-    QVector<Tile*> walls;   // 所有不可行走的瓦片（墙壁）
-    int mapWidth, mapHeight;
-    int tileSize;           // 每个瓦片的像素尺寸（这里用32x32）
+    QVector<Tile*> walls;
+    QVector<Tile*> allTiles;
+    QVector<Portal> portals;
+    QPointF playerStart;
+    int tileSize;
 };
 
 #endif // TILEMAP_H

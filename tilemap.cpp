@@ -1,68 +1,73 @@
 #include "tilemap.h"
-#include "tile.h"
-#include <QGraphicsScene>
+#include "maploader.h"
+#include <QDebug>
 
-TileMap::TileMap() : tileSize(32)
+TileMap::TileMap() : tileSize(32) {}
+
+TileMap::~TileMap()
 {
+    clear();
 }
 
-void TileMap::buildMap(QGraphicsScene *scene)
+void TileMap::clear()
 {
-    // 定义地图尺寸（格子数）
-    mapWidth = 40;   // 40 * 32 = 1280 像素宽
-    mapHeight = 30;  // 30 * 32 = 960 像素高
-
-    // 定义地图数据（0=空地，1=墙壁）
-    // 这是一个简单的矩形边框 + 内部几个障碍物，模拟“校史馆”房间
-    int mapData[30][40] = {0};  // 先全0，再赋值
-
-    // 1. 四周墙壁
-    for (int x = 0; x < mapWidth; ++x) {
-        mapData[0][x] = 1;                 // 上边界
-        mapData[mapHeight-1][x] = 1;       // 下边界
+    for (Tile *t : allTiles) {
+        if (t && t->scene()) t->scene()->removeItem(t);
+        delete t;
     }
-    for (int y = 0; y < mapHeight; ++y) {
-        mapData[y][0] = 1;                 // 左边界
-        mapData[y][mapWidth-1] = 1;        // 右边界
+    allTiles.clear();
+    walls.clear();
+    portals.clear();
+    playerStart = QPointF();
+}
+
+bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
+{
+    clear();
+
+    TiledMapData mapData;
+    if (!MapLoader::load(jsonPath, mapData)) {
+        qDebug() << "Failed to parse map file:" << jsonPath;
+        return false;
     }
 
-    // 2. 内部添加一些柱子/展柜（墙壁）
-    // 一个展柜位于 (10,10) 到 (12,12) 区域
-    for (int x = 10; x <= 12; ++x)
-        for (int y = 10; y <= 12; ++y)
-            mapData[y][x] = 1;
+    tileSize = mapData.tileWidth;
 
-    // 另一个展柜在 (25,20) 附近
-    mapData[20][25] = 1;
-    mapData[20][26] = 1;
-    mapData[21][25] = 1;
-    mapData[21][26] = 1;
+    // 遍历所有瓦片图层
+    for (auto it = mapData.layerData.begin(); it != mapData.layerData.end(); ++it) {
+        const QString &layerName = it.key();
+        const QVector<int> &data = it.value();
+        int width = mapData.width;
+        int height = mapData.height;
+        if (data.size() != width * height) {
+            qDebug() << "Layer data size mismatch for layer:" << layerName;
+            continue;
+        }
 
-    // 一个中心雕像（不可通过）
-    mapData[15][20] = 1;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                int gid = data[y * width + x];
+                if (gid == 0) continue;
+                QString imagePath = mapData.gidToImage.value(gid, "");
+                if (imagePath.isEmpty()) continue;
 
-    // 遍历地图
-    for (int y = 0; y < mapHeight; ++y) {
-        for (int x = 0; x < mapWidth; ++x) {
-            qreal px = x * tileSize;
-            qreal py = y * tileSize;
-
-            if (mapData[y][x] == 1) {  // 墙壁
-                Tile *tile = new Tile(":/resources/images/wall.png", px, py);
+                Tile *tile = new Tile(imagePath, x * tileSize, y * tileSize);
                 scene->addItem(tile);
-                walls.append(tile);    // 仍然添加到碰撞列表
-            } else {                   // 地板
-                Tile *floor = new Tile(":/resources/images/floor.png", px, py);
-                scene->addItem(floor);
-                // 地板不加入 walls，所以玩家可以走上去
+                allTiles.append(tile);
+
+                // 碰撞检测：仅图层名为 "wall" 的瓦片加入墙壁列表
+                if (layerName == "wall") {
+                    walls.append(tile);
+                }
             }
         }
     }
 
-    // 添加传送门（也是墙壁类，不可走）
-    Tile *portal = new Tile(":/resources/images/portal.png", 35 * tileSize, 15 * tileSize);
-    scene->addItem(portal);
-    walls.append(portal);
+    // 保存传送门和玩家出生点
+    portals = mapData.portals;
+    playerStart = mapData.playerStart.position;
+
+    return true;
 }
 
 bool TileMap::collidesWithWall(QGraphicsItem *item) const

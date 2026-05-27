@@ -1,12 +1,15 @@
 #include "tile.h"
 #include <QPixmap>
+#include <QDebug>
 
 Tile::Tile(const QString &imagePath, qreal x, qreal y, QGraphicsItem *parent)
     : QGraphicsPixmapItem(parent)
 {
     QPixmap pixmap(imagePath);
-    // 假设所有瓦片尺寸统一为32x32，如果不是，可以缩放
-    // pixmap = pixmap.scaled(32, 32);
-    setPixmap(pixmap);
+    if (pixmap.isNull()) {
+        qDebug() << "Failed to load tile image:" << imagePath;
+    } else {
+        setPixmap(pixmap);
+    }
     setPos(x, y);
 }

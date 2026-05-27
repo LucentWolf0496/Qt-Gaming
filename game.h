@@ -4,6 +4,7 @@
 #include <QGraphicsView>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QString>
 
 class Player;
 class TileMap;
@@ -17,18 +18,21 @@ public:
 
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    void loadMap(const QString &mapFilePath);   // 切换地图
 
 private slots:
     void updateGame();   // 每帧更新玩家移动
+    void checkPortal();  // 检测传送门触发
 
 private:
-    QGraphicsScene *scene;
-    Player *player;
-    TileMap *tileMap;
-    QTimer *gameTimer;
+    QGraphicsScene *scene = nullptr;
+    Player *player = nullptr;
+    TileMap *tileMap = nullptr;
+    QTimer *gameTimer = nullptr;
 
-    // 按键状态
     bool upPressed, downPressed, leftPressed, rightPressed;
+    QString currentMapPath;
+    bool canTeleport;           // 传送冷却标志
 };
 
 #endif // GAME_H

@@ -8,10 +8,14 @@ SOURCES += \
     game.cpp \
     player.cpp \
     tilemap.cpp \
-    tile.cpp
+    tile.cpp \
+    maploader.cpp
 
 HEADERS += \
     game.h \
     player.h \
     tilemap.h \
-    tile.h
+    tile.h \
+    maploader.h
+
+CONFIG += console

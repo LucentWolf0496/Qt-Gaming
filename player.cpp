@@ -1,16 +1,18 @@
 #include "player.h"
 #include "tilemap.h"
 #include <QPixmap>
+#include <QDebug>
 
 Player::Player(TileMap *map, QGraphicsItem *parent)
     : QGraphicsPixmapItem(parent), tileMap(map), speed(4.0)
 {
-    // 加载图片
-    QPixmap pixmap(":/resources/images/player.png");
-    // 缩放图片到合适大小（如果原图不是32x32）
-    // pixmap = pixmap.scaled(32, 32);
+    QPixmap pixmap(":/images/player.png");
+    if (pixmap.isNull()) {
+        qDebug() << "Failed to load player.png, creating blue placeholder.";
+        pixmap = QPixmap(32, 32);
+        pixmap.fill(Qt::blue);
+    }
     setPixmap(pixmap);
-    // 设置碰撞检测形状为矩形（默认就是 boundingRect，可省略）
     setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
 }
 
