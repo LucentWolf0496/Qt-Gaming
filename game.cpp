@@ -107,11 +107,14 @@ void Game::updateGame()
 
 void Game::checkPortal()
 {
-    // 传送门逻辑（如果你不需要，可以留空函数体或删除调用）
-    // 这里保留一个简单版本，无冷却
+    if (!canTeleport) return;   // 冷却中，不处理传送
+
     QRectF playerRect = player->boundingRect().translated(player->pos());
     for (const Portal &portal : tileMap->getPortals()) {
         if (playerRect.intersects(portal.rect)) {
+            // 触发传送，立即进入冷却
+            canTeleport = false;
+
             if (portal.targetMap.isEmpty() || portal.targetMap == currentMapPath) {
                 // 同地图传送
                 for (const Portal &p : tileMap->getPortals()) {
@@ -122,7 +125,7 @@ void Game::checkPortal()
                     }
                 }
             } else {
-                // 跨地图传送
+                // 跨地图传送（暂时用不到，但保留）
                 loadMap(portal.targetMap);
                 for (const Portal &p : tileMap->getPortals()) {
                     if (p.id == portal.targetPortalId) {
@@ -132,6 +135,12 @@ void Game::checkPortal()
                     }
                 }
             }
+
+            // 2秒后恢复冷却
+            QTimer::singleShot(2000, this, [this]() {
+                canTeleport = true;
+            });
+
             break; // 只触发第一个碰撞的传送门
         }
     }
