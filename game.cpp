@@ -3,6 +3,11 @@
 #include "tilemap.h"
 #include <QDebug>
 #include <QGraphicsRectItem>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFileInfo>
 
 Game::Game(QWidget *parent)
     : QGraphicsView(parent),
@@ -44,7 +49,7 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
         delete item;
     }
 
-    // 创建新地图
+    // 创建新地图（负责 floor 和 wall 的渲染及碰撞）
     tileMap = new TileMap();
     if (!tileMap->loadFromFile(mapFilePath, scene)) {
         qDebug() << "Failed to load map:" << mapFilePath;
@@ -65,6 +70,73 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
             gameTimer->start(16);
         }
         return;
+    }
+
+    // ================= 手动绘制 door, chest, boss, portal 图层 =================
+    // 读取地图 JSON 文件，解析这些特定图层
+    QFile file(mapFilePath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QByteArray jsonData = file.readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+        if (!doc.isNull()) {
+            QJsonObject root = doc.object();
+            int mapWidth = root["width"].toInt();
+            int mapHeight = root["height"].toInt();
+            int tileWidth = root["tilewidth"].toInt();
+            int tileHeight = root["tileheight"].toInt();
+            // 确保图块大小与 tileMap 一致（通常是32）
+            Q_UNUSED(tileHeight);
+
+            // 需要绘制的图层名称列表
+            QStringList targetLayers = { "door", "chest", "boss_image", "portal_image" };
+            // 为每个图层指定对应的图片资源
+            QMap<QString, QString> layerImageMap;
+            layerImageMap["door"] = ":/images/door.png";
+            layerImageMap["chest"] = ":/images/chest.png";
+            layerImageMap["boss_image"] = ":/images/boss.png";
+            layerImageMap["portal_image"] = ":/images/portal.png";
+
+            QJsonArray layers = root["layers"].toArray();
+            for (const QJsonValue &layerVal : layers) {
+                QJsonObject layerObj = layerVal.toObject();
+                QString layerName = layerObj["name"].toString();
+                if (!targetLayers.contains(layerName)) continue;
+
+                QString imagePath = layerImageMap.value(layerName, "");
+                if (imagePath.isEmpty()) {
+                    qDebug() << "No image path for layer:" << layerName;
+                    continue;
+                }
+
+                QJsonArray dataArr = layerObj["data"].toArray();
+                if (dataArr.size() != mapWidth * mapHeight) {
+                    qDebug() << "Layer data size mismatch for:" << layerName;
+                    continue;
+                }
+
+                // 遍历图块数据
+                for (int y = 0; y < mapHeight; ++y) {
+                    for (int x = 0; x < mapWidth; ++x) {
+                        int rawGid = dataArr[y * mapWidth + x].toInt();
+                        // 清除高位标志（翻转/旋转）
+                        int cleanGid = rawGid & 0x1FFFFFFF;
+                        if (cleanGid == 0) continue; // 空图块
+
+                        // 创建 Tile 对象（Tile 类使用图片路径和坐标）
+                        Tile *tile = new Tile(imagePath, x * tileWidth, y * tileWidth);
+                        scene->addItem(tile);
+                        // 可选：将 tile 存入 tileMap 的 allTiles 列表以便统一管理（如果需要）
+                        // 这里我们直接添加，不干扰 tileMap 的内部列表
+                    }
+                }
+                // qDebug() << "Manually drew layer:" << layerName;
+            }
+        } else {
+            qDebug() << "Failed to parse JSON for manual layer drawing:" << mapFilePath;
+        }
+        file.close();
+    } else {
+        qDebug() << "Cannot open map file for manual drawing:" << mapFilePath;
     }
 
     // 创建玩家

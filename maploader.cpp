@@ -6,6 +6,9 @@
 #include <QDebug>
 #include <QFileInfo>
 
+// Tiled 1.x 中，GID 高位用于存储翻转/旋转标志，低 29 位为实际图块 ID
+static const int GID_MASK = 0x1FFFFFFF;
+
 bool MapLoader::load(const QString &jsonPath, TiledMapData &outMap)
 {
     QFile file(jsonPath);
@@ -36,7 +39,7 @@ bool MapLoader::load(const QString &jsonPath, TiledMapData &outMap)
         QString imagePath;
         if (ts.contains("image")) {
             imagePath = ts["image"].toString();
-            // 将相对路径转换为 Qt 资源路径
+            // 将绝对路径转换为 Qt 资源路径
             QString fileName = QFileInfo(imagePath).fileName();
             if (!fileName.isEmpty()) {
                 imagePath = ":/images/" + fileName;
@@ -66,18 +69,18 @@ bool MapLoader::load(const QString &jsonPath, TiledMapData &outMap)
         QString layerType = layerObj["type"].toString();
 
         if (layerType == "tilelayer") {
-            // 注意：layerWidth/layerHeight 可以不使用，用 outMap.width/height 校验即可
-            // 但为了避免警告，我们可以用 Q_UNUSED 或者直接删除变量
-            // 这里直接删除变量声明，因为确实不需要
             QJsonArray dataArr = layerObj["data"].toArray();
             QVector<int> tileData;
             tileData.reserve(dataArr.size());
             for (const QJsonValue &v : dataArr) {
-                tileData.append(v.toInt());
+                int rawGid = v.toInt();
+                // 清除高位标志，只保留低 29 位的实际图块 ID
+                int cleanGid = rawGid & GID_MASK;
+                tileData.append(cleanGid);
             }
             outMap.layerData[layerName] = tileData;
 
-            // 为每个非 0 GID 记录图片路径（这才是正确的映射逻辑）
+            // 为每个非 0 GID 记录图片路径
             for (int gid : tileData) {
                 if (gid != 0 && !outMap.gidToImage.contains(gid)) {
                     QString img = getImageForGid(gid);
