@@ -414,8 +414,8 @@
                  "type":"player",
                  "visible":true,
                  "width":0,
-                 "x":1708,
-                 "y":302
+                 "x":160,
+                 "y":175
                 }],
          "opacity":1,
          "type":"objectgroup",
