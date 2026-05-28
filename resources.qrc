@@ -4,6 +4,12 @@
         <file>images/player.png</file>
         <file>images/portal.png</file>
         <file>images/wall.png</file>
+        <file>images/boss.png</file>
+        <file>images/chest.png</file>
+        <file>images/door.png</file>
+        <file>images/minion.png</file>
+        <file>images/stair.png</file>
         <file>maps/school_map.tmj</file>
+        <file>maps/chamber1.tmj</file>
     </qresource>
 </RCC>

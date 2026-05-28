@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QKeyEvent>
 #include <QString>
+#include "maploader.h"   // 必须包含，因为使用了 Portal 结构体
 
 class Player;
 class TileMap;
@@ -18,11 +19,12 @@ public:
 
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
-    void loadMap(const QString &mapFilePath);   // 切换地图
+    void loadMap(const QString &mapFilePath, bool useStartPoint = true);
 
 private slots:
-    void updateGame();   // 每帧更新玩家移动
-    void checkPortal();  // 检测传送门触发
+    void updateGame();
+    void checkPortal();
+    void performTeleport(const Portal &portal); // 现在 Portal 已定义
 
 private:
     QGraphicsScene *scene = nullptr;
@@ -32,7 +34,8 @@ private:
 
     bool upPressed, downPressed, leftPressed, rightPressed;
     QString currentMapPath;
-    bool canTeleport;           // 传送冷却标志
+    bool canTeleport;
+    bool isTeleporting;
 };
 
 #endif // GAME_H
