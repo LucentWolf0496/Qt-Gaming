@@ -1,6 +1,7 @@
 #include "tilemap.h"
 #include "maploader.h"
 #include <QDebug>
+#include <QRandomGenerator>
 
 TileMap::TileMap() : tileSize(32) {}
 
@@ -51,7 +52,20 @@ bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
                 QString imagePath = mapData.gidToImage.value(gid, "");
                 if (imagePath.isEmpty()) continue;
 
-                Tile *tile = new Tile(imagePath, x * tileSize, y * tileSize);
+                // 随机替换 floor / wall 图片，并固定缩放为瓦片大小
+                QString finalPath = imagePath;
+                QSize fixedSize;
+                if (imagePath.endsWith("floor.png")) {
+                    finalPath = (QRandomGenerator::global()->bounded(2) == 0)
+                                ? ":/images/floor_dark.png" : ":/images/floor_light.png";
+                    fixedSize = QSize(tileSize, tileSize);
+                } else if (imagePath.endsWith("wall.png")) {
+                    int r = QRandomGenerator::global()->bounded(3);
+                    finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                    fixedSize = QSize(tileSize, tileSize);
+                }
+
+                Tile *tile = new Tile(finalPath, x * tileSize, y * tileSize, fixedSize);
                 scene->addItem(tile);
                 allTiles.append(tile);
 
@@ -74,6 +88,15 @@ bool TileMap::collidesWithWall(QGraphicsItem *item) const
 {
     for (Tile *wall : walls) {
         if (item->collidesWithItem(wall))
+            return true;
+    }
+    return false;
+}
+
+bool TileMap::collidesWithWall(const QRectF &rect) const
+{
+    for (Tile *wall : walls) {
+        if (wall->sceneBoundingRect().intersects(rect))
             return true;
     }
     return false;

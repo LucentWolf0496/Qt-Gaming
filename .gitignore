@@ -22,6 +22,17 @@ Makefile.*
 *.pro.user
 *.pro.user.*
 
+# macOS
+.DS_Store
+
+# Qt moc/qrc 生成文件
+moc_*.cpp
+moc_predefs.h
+qrc_*.cpp
+
+# macOS 应用包
+*.app/
+
 # 其他临时文件
 *.swp
 *~

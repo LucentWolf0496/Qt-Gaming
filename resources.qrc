@@ -1,14 +1,35 @@
 <RCC>
     <qresource prefix="/">
         <file>images/floor.png</file>
+        <file>images/floor_dark.png</file>
+        <file>images/floor_light.png</file>
+        <file>images/player.gif</file>
+        <file>images/player_run.gif</file>
+        <file>images/player_enhanced.gif</file>
+        <file>images/player_tranform.gif</file>
+        <file>images/player_background_fire.gif</file>
+        <file>images/pet.gif</file>
+        <file>images/pet_right_run.gif</file>
+        <file>images/player_enhanced_right_run.gif</file>
+        <file>images/player_enhanced_K.gif</file>
+        <file>images/player_enhanced_pugong.gif</file>
+        <file>images/player_enhanced_fly_fire.gif</file>
+        <file>images/daolang_left.gif</file>
         <file>images/player.png</file>
         <file>images/portal.png</file>
         <file>images/wall.png</file>
+        <file>images/wall_1.png</file>
+        <file>images/wall_2.png</file>
+        <file>images/wall_3.png</file>
         <file>images/boss.png</file>
         <file>images/chest.png</file>
         <file>images/door.png</file>
         <file>images/minion.png</file>
         <file>images/stair.png</file>
+        <file>images/fly_fire_right.gif</file>
+        <file>images/fly_fire_left_down.gif</file>
+        <file>images/fire_hit.gif</file>
+        <file>images/bomb.gif</file>
         <file>maps/school_map.tmj</file>
         <file>maps/chamber1.tmj</file>
     </qresource>

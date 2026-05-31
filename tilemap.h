@@ -16,6 +16,7 @@ public:
     void clear();
 
     bool collidesWithWall(QGraphicsItem *item) const;
+    bool collidesWithWall(const QRectF &rect) const;
     const QVector<Portal>& getPortals() const { return portals; }
     QPointF getPlayerStart() const { return playerStart; }
 
