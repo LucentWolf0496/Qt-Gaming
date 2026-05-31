@@ -1,0 +1,154 @@
+{
+    "activeFile": "",
+    "expandedProjectPaths": [
+    ],
+    "file.lastUsedOpenFilter": "全部文件 (*)",
+    "fileStates": {
+        "C:/Users/shirl/Desktop/QtWorks/Map2/barrier.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/boss.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/chest.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/door.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/floor.tsx": {
+            "scaleInDock": 1.5
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/minion.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/player.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/stair.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/wall.tsx": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Map2/地图.tmx": {
+            "scale": 0.2375,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 3677.894736842105,
+                "y": 1919.9999999999995
+            }
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj": {
+            "scale": 0.125,
+            "selectedLayer": 8,
+            "viewCenter": {
+                "x": 4188,
+                "y": 4188
+            }
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#boss": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#chest": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#door": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#floor": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#minion": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#player": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#portal": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#stair": {
+            "scaleInDock": 1
+        },
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj#wall": {
+            "scaleInDock": 1
+        },
+        "boss.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "chest.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "collection.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "door.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "elite.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "floor.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "grass.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "key.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "lianda.tmx": {
+            "scale": 0.125,
+            "selectedLayer": 9,
+            "viewCenter": {
+                "x": 5452,
+                "y": 10652
+            }
+        },
+        "minion.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "portal.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "wall.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "water.tsx": {
+            "scaleInDock": 3,
+            "scaleInEditor": 1
+        }
+    },
+    "last.imagePath": "C:/Users/shirl/Desktop/QtWorks/Map3/图片素材",
+    "map.lastUsedFormat": "tmx",
+    "openFiles": [
+    ],
+    "project": "Lianda.tiled-project",
+    "recentFiles": [
+        "collection.tsx",
+        "key.tsx",
+        "portal.tsx",
+        "chest.tsx",
+        "elite.tsx",
+        "boss.tsx",
+        "minion.tsx",
+        "grass.tsx",
+        "water.tsx",
+        "door.tsx",
+        "C:/Users/shirl/Desktop/QtWorks/Qt-bw001/Qt-Gaming/maps/chamber1.tmj",
+        "wall.tsx"
+    ],
+    "tileset.lastUsedFormat": "tsx"
+}

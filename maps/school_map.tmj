@@ -374,6 +374,17 @@
                  "id":32,
                  "name":"6",
                  "opacity":1,
+                 "properties":[
+                        {
+                         "name":"target_map",
+                         "type":"string",
+                         "value":":\/maps\/lianda.tmj"
+                        }, 
+                        {
+                         "name":"target_portal_id",
+                         "type":"string",
+                         "value":"1"
+                        }],
                  "rotation":0,
                  "type":"_portal",
                  "visible":true,
@@ -414,8 +425,8 @@
                  "type":"player",
                  "visible":true,
                  "width":0,
-                 "x":160,
-                 "y":175
+                 "x":2412,
+                 "y":1040
                 }],
          "opacity":1,
          "type":"objectgroup",

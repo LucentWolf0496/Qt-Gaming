@@ -20,6 +20,8 @@ void TileMap::clear()
     walls.clear();
     portals.clear();
     playerStart = QPointF();
+    mapWidth = 0;
+    mapHeight = 0;
 }
 
 bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
@@ -33,6 +35,9 @@ bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
     }
 
     tileSize = mapData.tileWidth;
+    // 记录地图尺寸（格子数）
+    mapWidth = mapData.width;
+    mapHeight = mapData.height;
 
     // 遍历所有瓦片图层
     for (auto it = mapData.layerData.begin(); it != mapData.layerData.end(); ++it) {

@@ -32,5 +32,13 @@
         <file>images/bomb.gif</file>
         <file>maps/school_map.tmj</file>
         <file>maps/chamber1.tmj</file>
+        <file>images/collection.png</file>
+        <file>images/elite.png</file>
+        <file>images/fire.png</file>
+        <file>images/grass.png</file>
+        <file>images/key.png</file>
+        <file>images/rock.png</file>
+        <file>images/water.png</file>
+        <file>maps/lianda.tmj</file>
     </qresource>
 </RCC>
