@@ -397,6 +397,17 @@
                  "id":33,
                  "name":"7",
                  "opacity":1,
+                 "properties":[
+                        {
+                         "name":"target_map",
+                         "type":"string",
+                         "value":":\/maps\/Weiming_lake.tmj"
+                        }, 
+                        {
+                         "name":"target_portal_id",
+                         "type":"string",
+                         "value":"1"
+                        }],
                  "rotation":0,
                  "type":"_portal",
                  "visible":true,
@@ -425,8 +436,8 @@
                  "type":"player",
                  "visible":true,
                  "width":0,
-                 "x":2412,
-                 "y":1040
+                 "x":159,
+                 "y":161
                 }],
          "opacity":1,
          "type":"objectgroup",

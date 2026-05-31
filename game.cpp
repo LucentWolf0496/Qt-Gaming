@@ -316,74 +316,89 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     }
     qDebug() << "[loadMap] TileMap loaded successfully.";
 
-    // ================= 手动绘制特定图层 =================
-    QFile file(mapFilePath);
-    if (file.open(QIODevice::ReadOnly)) {
-        QByteArray jsonData = file.readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(jsonData);
-        if (!doc.isNull()) {
-            QJsonObject root = doc.object();
-            int mapWidth = root["width"].toInt();
-            int mapHeight = root["height"].toInt();
-            int tileWidth = root["tilewidth"].toInt();
-            int tileHeight = root["tileheight"].toInt();
+// ================= 手动绘制除 floor 和 wall 之外的所有图层 =================
+QFile file(mapFilePath);
+if (file.open(QIODevice::ReadOnly)) {
+    QByteArray jsonData = file.readAll();
+    QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+    if (!doc.isNull()) {
+        QJsonObject root = doc.object();
+        int mapWidth = root["width"].toInt();
+        int mapHeight = root["height"].toInt();
+        int tileWidth = root["tilewidth"].toInt();
+        int tileHeight = root["tileheight"].toInt();
 
-            QStringList targetLayers = { "door", "chest", "boss_image", "portal_image", "minion_image" };
-            QMap<QString, QString> layerImageMap;
-            layerImageMap["door"] = ":/images/door.png";
-            layerImageMap["chest"] = ":/images/chest.png";
-            layerImageMap["boss_image"] = ":/images/boss.png";
-            layerImageMap["portal_image"] = ":/images/portal.png";
+        // 图层名 -> 图片路径映射（不包括 floor 和 wall）
+        QMap<QString, QString> layerImageMap;
+        layerImageMap["door"]   = ":/images/door.png";
+        layerImageMap["chest"]  = ":/images/chest.png";
+        layerImageMap["boss"]   = ":/images/boss.png";
+        layerImageMap["boss_image"] = ":/images/boss.png";
+        layerImageMap["portal"] = ":/images/portal.png";
+        layerImageMap["portal_image"] = ":/images/portal.png";
+        layerImageMap["minion"] = ":/images/minion.png";
+        layerImageMap["minion_image"] = ":/images/minion.png";
+        layerImageMap["water"]  = ":/images/water.png";
+        layerImageMap["grass"]  = ":/images/grass.png";
+        layerImageMap["rock"]   = ":/images/rock.png";
+        layerImageMap["fireland"]   = ":/images/fire.png";
+        layerImageMap["elite"]  = ":/images/elite.png";
+        layerImageMap["stair"]  = ":/images/stair.png";
+        // 可继续添加
 
-            QJsonArray layers = root["layers"].toArray();
-            for (const QJsonValue &layerVal : layers) {
-                QJsonObject layerObj = layerVal.toObject();
-                QString layerName = layerObj["name"].toString();
-                if (!targetLayers.contains(layerName)) continue;
+        QJsonArray layers = root["layers"].toArray();
+        for (const QJsonValue &layerVal : layers) {
+            QJsonObject layerObj = layerVal.toObject();
+            QString layerName = layerObj["name"].toString();
+            if (layerName == "floor" || layerName == "wall") continue; // 已由 TileMap 处理
 
-                QString imagePath = layerImageMap.value(layerName, "");
-                if (imagePath.isEmpty()) continue;
+            QString imagePath = layerImageMap.value(layerName, "");
+            if (imagePath.isEmpty()) {
+                imagePath = ":/images/" + layerName + ".png";
+                qDebug() << "[ManualDraw] No mapping for layer" << layerName << ", using" << imagePath;
+            }
 
-                QJsonArray dataArr = layerObj["data"].toArray();
-                if (dataArr.size() != mapWidth * mapHeight) continue;
+            QJsonArray dataArr = layerObj["data"].toArray();
+            if (dataArr.size() != mapWidth * mapHeight) continue;
 
+            if (layerName == "minion" || layerName == "minion_image") {
                 int enemyCount = 0;
+                for (int y = 0; y < mapHeight; ++y) {
+                    for (int x = 0; x < mapWidth; ++x) {
+                        int rawGid = dataArr[y * mapWidth + x].toInt();
+                        int cleanGid = rawGid & 0x1FFFFFFF;
+                        if (cleanGid == 0) continue;
+                        Enemy *enemy = new Enemy(tileMap, scene,
+                                                 QPointF(x * tileWidth, y * tileHeight),
+                                                 this);
+                        enemies.append(enemy);
+                        hittableItems.append(enemy);
+                        enemyCount++;
+                    }
+                }
+                qDebug() << "[ManualDraw] Minion layer" << layerName << "created" << enemyCount << "enemies";
+            } else {
                 int tileCount = 0;
                 for (int y = 0; y < mapHeight; ++y) {
                     for (int x = 0; x < mapWidth; ++x) {
                         int rawGid = dataArr[y * mapWidth + x].toInt();
                         int cleanGid = rawGid & 0x1FFFFFFF;
                         if (cleanGid == 0) continue;
-
-                        if (layerName == "minion_image") {
-                            Enemy *enemy = new Enemy(tileMap, scene, QPointF(x * tileWidth, y * tileWidth), this);
-                            enemies.append(enemy);
-                            hittableItems.append(enemy);
-                            enemyCount++;
-                        } else {
-                            Tile *tile = new Tile(imagePath, x * tileWidth, y * tileHeight);
-                            scene->addItem(tile);
-                            tileCount++;
-                            if (layerName == "boss_image") {
-                                tile->setData(0, "boss");
-                                hittableItems.append(tile);
-                            }
+                        Tile *tile = new Tile(imagePath, x * tileWidth, y * tileHeight);
+                        scene->addItem(tile);
+                        tileCount++;
+                        // 将 boss/elite 图块加入可攻击列表
+                        if (layerName == "boss" || layerName == "boss_image" || layerName == "elite") {
+                            hittableItems.append(tile);
                         }
                     }
                 }
-                if (layerName == "minion_image") {
-                    qDebug() << "[loadMap] Minion layer: created" << enemyCount << "enemies";
-                } else {
-                    qDebug() << "[loadMap] Layer" << layerName << ":" << tileCount << "tiles drawn";
-                }
+                qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles with" << imagePath;
             }
-        } else {
-            qDebug() << "[loadMap] Failed to parse JSON for manual drawing.";
         }
-        file.close();
-    } else {
-        qDebug() << "[loadMap] Cannot open map file for manual drawing.";
     }
+    file.close();
+}
 
     // ---------- 4. 创建玩家 ----------
     player = new Player(tileMap);

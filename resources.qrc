@@ -40,5 +40,6 @@
         <file>images/rock.png</file>
         <file>images/water.png</file>
         <file>maps/lianda.tmj</file>
+        <file>maps/Weiming_lake.tmj</file>
     </qresource>
 </RCC>

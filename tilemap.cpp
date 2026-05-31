@@ -2,6 +2,8 @@
 #include "maploader.h"
 #include <QDebug>
 #include <QRandomGenerator>
+#include <QHash>
+#include <QPair>
 
 TileMap::TileMap() : tileSize(32) {}
 
@@ -18,6 +20,7 @@ void TileMap::clear()
     }
     allTiles.clear();
     walls.clear();
+    gridWalls.clear();      // 清空空间索引
     portals.clear();
     playerStart = QPointF();
     mapWidth = 0;
@@ -86,23 +89,64 @@ bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
     portals = mapData.portals;
     playerStart = mapData.playerStart.position;
 
+    // ========== 构建空间分割索引 ==========
+    buildSpatialGrid();
+
     return true;
+}
+
+void TileMap::buildSpatialGrid()
+{
+    gridWalls.clear();
+    int gridPixelSize = tileSize * GRID_SIZE;  // 每个网格的像素大小
+
+    for (Tile *wall : walls) {
+        // 获取墙壁瓦片左上角的世界坐标
+        qreal wx = wall->x();
+        qreal wy = wall->y();
+        // 计算所在网格坐标
+        int gridX = static_cast<int>(wx) / gridPixelSize;
+        int gridY = static_cast<int>(wy) / gridPixelSize;
+        gridWalls[{gridX, gridY}].append(wall);
+    }
+    qDebug() << "[SpatialGrid] Built with" << gridWalls.size() << "grid cells.";
+}
+
+QPair<int,int> TileMap::getGridCoord(int x, int y) const
+{
+    int gridPixelSize = tileSize * GRID_SIZE;
+    return { x / gridPixelSize, y / gridPixelSize };
 }
 
 bool TileMap::collidesWithWall(QGraphicsItem *item) const
 {
-    for (Tile *wall : walls) {
-        if (item->collidesWithItem(wall))
-            return true;
-    }
-    return false;
+    if (!item) return false;
+    // 复用矩形碰撞检测，避免重复代码
+    return collidesWithWall(item->sceneBoundingRect());
 }
 
 bool TileMap::collidesWithWall(const QRectF &rect) const
 {
-    for (Tile *wall : walls) {
-        if (wall->sceneBoundingRect().intersects(rect))
-            return true;
+    if (walls.isEmpty()) return false;
+
+    int gridPixelSize = tileSize * GRID_SIZE;
+    // 计算 rect 覆盖的网格范围
+    int minGridX = static_cast<int>(rect.left()) / gridPixelSize;
+    int maxGridX = static_cast<int>(rect.right()) / gridPixelSize;
+    int minGridY = static_cast<int>(rect.top()) / gridPixelSize;
+    int maxGridY = static_cast<int>(rect.bottom()) / gridPixelSize;
+
+    // 只遍历这些网格内的墙壁
+    for (int gx = minGridX; gx <= maxGridX; ++gx) {
+        for (int gy = minGridY; gy <= maxGridY; ++gy) {
+            auto it = gridWalls.find({gx, gy});
+            if (it != gridWalls.end()) {
+                for (Tile *wall : it.value()) {
+                    if (wall->sceneBoundingRect().intersects(rect))
+                        return true;
+                }
+            }
+        }
     }
     return false;
 }
