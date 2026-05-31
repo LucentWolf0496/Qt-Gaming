@@ -292,7 +292,7 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
 
     // ---------- 3. 创建新地图 ----------
     tileMap = new TileMap();
-    if (!tileMap->loadFromFile(mapFilePath, scene)) {
+    if (!tileMap->loadFromFile(mapFilePath)) {
         qDebug() << "[loadMap] Failed to load map:" << mapFilePath;
         // 失败回退：创建灰色背景和一个蓝色方块玩家
         QGraphicsRectItem *bg = new QGraphicsRectItem(0, 0, 800, 600);
@@ -316,7 +316,7 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     }
     qDebug() << "[loadMap] TileMap loaded successfully.";
 
-// ================= 手动绘制除 floor 和 wall 之外的所有图层 =================
+// ================= 手动绘制所有图层（包括 floor 和 wall）=================
 QFile file(mapFilePath);
 if (file.open(QIODevice::ReadOnly)) {
     QByteArray jsonData = file.readAll();
@@ -328,8 +328,9 @@ if (file.open(QIODevice::ReadOnly)) {
         int tileWidth = root["tilewidth"].toInt();
         int tileHeight = root["tileheight"].toInt();
 
-        // 图层名 -> 图片路径映射（不包括 floor 和 wall）
+        // 图层名 -> 图片路径映射（为所有图层提供默认图片）
         QMap<QString, QString> layerImageMap;
+        // 通用装饰层
         layerImageMap["door"]   = ":/images/door.png";
         layerImageMap["chest"]  = ":/images/chest.png";
         layerImageMap["boss"]   = ":/images/boss.png";
@@ -341,26 +342,21 @@ if (file.open(QIODevice::ReadOnly)) {
         layerImageMap["water"]  = ":/images/water.png";
         layerImageMap["grass"]  = ":/images/grass.png";
         layerImageMap["rock"]   = ":/images/rock.png";
-        layerImageMap["fireland"]   = ":/images/fire.png";
+        layerImageMap["fireland"] = ":/images/fire.png";
         layerImageMap["elite"]  = ":/images/elite.png";
         layerImageMap["stair"]  = ":/images/stair.png";
-        // 可继续添加
+        // floor 和 wall 不使用固定图片，而是随机纹理，在循环中单独处理
 
         QJsonArray layers = root["layers"].toArray();
         for (const QJsonValue &layerVal : layers) {
             QJsonObject layerObj = layerVal.toObject();
             QString layerName = layerObj["name"].toString();
-            if (layerName == "floor" || layerName == "wall") continue; // 已由 TileMap 处理
-
-            QString imagePath = layerImageMap.value(layerName, "");
-            if (imagePath.isEmpty()) {
-                imagePath = ":/images/" + layerName + ".png";
-                qDebug() << "[ManualDraw] No mapping for layer" << layerName << ", using" << imagePath;
-            }
+            if (layerObj["type"].toString() != "tilelayer") continue;
 
             QJsonArray dataArr = layerObj["data"].toArray();
             if (dataArr.size() != mapWidth * mapHeight) continue;
 
+            // ========== 处理 minion / minion_image 图层（生成 Enemy）==========
             if (layerName == "minion" || layerName == "minion_image") {
                 int enemyCount = 0;
                 for (int y = 0; y < mapHeight; ++y) {
@@ -377,27 +373,62 @@ if (file.open(QIODevice::ReadOnly)) {
                     }
                 }
                 qDebug() << "[ManualDraw] Minion layer" << layerName << "created" << enemyCount << "enemies";
-            } else {
-                int tileCount = 0;
-                for (int y = 0; y < mapHeight; ++y) {
-                    for (int x = 0; x < mapWidth; ++x) {
-                        int rawGid = dataArr[y * mapWidth + x].toInt();
-                        int cleanGid = rawGid & 0x1FFFFFFF;
-                        if (cleanGid == 0) continue;
-                        Tile *tile = new Tile(imagePath, x * tileWidth, y * tileHeight);
-                        scene->addItem(tile);
-                        tileCount++;
-                        // 将 boss/elite 图块加入可攻击列表
-                        if (layerName == "boss" || layerName == "boss_image" || layerName == "elite") {
-                            hittableItems.append(tile);
+                continue;
+            }
+
+            // ========== 普通瓦片图层（包括 floor, wall 和所有装饰）==========
+            int tileCount = 0;
+            for (int y = 0; y < mapHeight; ++y) {
+                for (int x = 0; x < mapWidth; ++x) {
+                    int rawGid = dataArr[y * mapWidth + x].toInt();
+                    int cleanGid = rawGid & 0x1FFFFFFF;
+                    if (cleanGid == 0) continue;
+
+                    QString finalPath;
+                    QSize fixedSize(tileWidth, tileHeight);
+
+                    // 地板随机纹理
+                    if (layerName == "floor") {
+                        finalPath = (QRandomGenerator::global()->bounded(2) == 0)
+                                    ? ":/images/floor_dark.png" : ":/images/floor_light.png";
+                    }
+                    // 墙壁随机纹理
+                    else if (layerName == "wall") {
+                        int r = QRandomGenerator::global()->bounded(3);
+                        finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                    }
+                    // 其他图层：从映射表获取或使用默认图片
+                    else {
+                        finalPath = layerImageMap.value(layerName, "");
+                        if (finalPath.isEmpty()) {
+                            finalPath = ":/images/" + layerName + ".png";
+                            qDebug() << "[ManualDraw] No mapping for layer" << layerName << ", using" << finalPath;
                         }
                     }
+
+                    Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
+                    scene->addItem(tile);
+                    tileCount++;
+
+                    // 墙壁需要加入碰撞系统
+                    if (layerName == "wall") {
+                        tileMap->addWallTile(tile);
+                    }
+
+                    // Boss / elite 图块加入可攻击列表
+                    if (layerName == "boss" || layerName == "boss_image" || layerName == "elite") {
+                        hittableItems.append(tile);
+                    }
                 }
-                qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles with" << imagePath;
             }
+            qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles";
         }
+    } else {
+        qDebug() << "[ManualDraw] Failed to parse JSON for manual drawing:" << mapFilePath;
     }
     file.close();
+} else {
+    qDebug() << "[ManualDraw] Cannot open map file for manual drawing:" << mapFilePath;
 }
 
     // ---------- 4. 创建玩家 ----------

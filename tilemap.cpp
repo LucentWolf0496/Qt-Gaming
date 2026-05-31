@@ -2,8 +2,6 @@
 #include "maploader.h"
 #include <QDebug>
 #include <QRandomGenerator>
-#include <QHash>
-#include <QPair>
 
 TileMap::TileMap() : tileSize(32) {}
 
@@ -20,14 +18,14 @@ void TileMap::clear()
     }
     allTiles.clear();
     walls.clear();
-    gridWalls.clear();      // 清空空间索引
+    gridWalls.clear();
     portals.clear();
     playerStart = QPointF();
     mapWidth = 0;
     mapHeight = 0;
 }
 
-bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
+bool TileMap::loadFromFile(const QString &jsonPath)
 {
     clear();
 
@@ -37,79 +35,43 @@ bool TileMap::loadFromFile(const QString &jsonPath, QGraphicsScene *scene)
         return false;
     }
 
+    // 只保存地图基本尺寸和瓦片大小
     tileSize = mapData.tileWidth;
-    // 记录地图尺寸（格子数）
     mapWidth = mapData.width;
     mapHeight = mapData.height;
 
-    // 遍历所有瓦片图层
-    for (auto it = mapData.layerData.begin(); it != mapData.layerData.end(); ++it) {
-        const QString &layerName = it.key();
-        const QVector<int> &data = it.value();
-        int width = mapData.width;
-        int height = mapData.height;
-        if (data.size() != width * height) {
-            qDebug() << "Layer data size mismatch for layer:" << layerName;
-            continue;
-        }
-
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                int gid = data[y * width + x];
-                if (gid == 0) continue;
-                QString imagePath = mapData.gidToImage.value(gid, "");
-                if (imagePath.isEmpty()) continue;
-
-                // 随机替换 floor / wall 图片，并固定缩放为瓦片大小
-                QString finalPath = imagePath;
-                QSize fixedSize;
-                if (imagePath.endsWith("floor.png")) {
-                    finalPath = (QRandomGenerator::global()->bounded(2) == 0)
-                                ? ":/images/floor_dark.png" : ":/images/floor_light.png";
-                    fixedSize = QSize(tileSize, tileSize);
-                } else if (imagePath.endsWith("wall.png")) {
-                    int r = QRandomGenerator::global()->bounded(3);
-                    finalPath = QString(":/images/wall_%1.png").arg(r + 1);
-                    fixedSize = QSize(tileSize, tileSize);
-                }
-
-                Tile *tile = new Tile(finalPath, x * tileSize, y * tileSize, fixedSize);
-                scene->addItem(tile);
-                allTiles.append(tile);
-
-                // 碰撞检测：仅图层名为 "wall" 的瓦片加入墙壁列表
-                if (layerName == "wall") {
-                    walls.append(tile);
-                }
-            }
-        }
-    }
-
-    // 保存传送门和玩家出生点
+    // 保存传送门和玩家出生点（从对象层解析）
     portals = mapData.portals;
     playerStart = mapData.playerStart.position;
 
-    // ========== 构建空间分割索引 ==========
-    buildSpatialGrid();
+    // 注意：这里不再创建任何瓦片！
+    // 所有瓦片（包括 floor, wall, 装饰）都由 Game 类手动绘制
 
     return true;
+}
+
+void TileMap::addWallTile(Tile *tile)
+{
+    if (!tile) return;
+    walls.append(tile);
+    allTiles.append(tile);      // 加入 allTiles 以便统一清理
+    // 增量添加到空间索引（简单起见，重建整个索引）
+    // 或者为了性能可以只添加当前墙壁，但重建开销不大（墙壁数量有限）
+    buildSpatialGrid();
 }
 
 void TileMap::buildSpatialGrid()
 {
     gridWalls.clear();
-    int gridPixelSize = tileSize * GRID_SIZE;  // 每个网格的像素大小
-
+    int gridPixelSize = tileSize * GRID_SIZE;
     for (Tile *wall : walls) {
-        // 获取墙壁瓦片左上角的世界坐标
         qreal wx = wall->x();
         qreal wy = wall->y();
-        // 计算所在网格坐标
         int gridX = static_cast<int>(wx) / gridPixelSize;
         int gridY = static_cast<int>(wy) / gridPixelSize;
         gridWalls[{gridX, gridY}].append(wall);
     }
-    qDebug() << "[SpatialGrid] Built with" << gridWalls.size() << "grid cells.";
+    // qDebug() << "[SpatialGrid] Built with" << gridWalls.size() << "grid cells.";
 }
 
 QPair<int,int> TileMap::getGridCoord(int x, int y) const
@@ -121,22 +83,18 @@ QPair<int,int> TileMap::getGridCoord(int x, int y) const
 bool TileMap::collidesWithWall(QGraphicsItem *item) const
 {
     if (!item) return false;
-    // 复用矩形碰撞检测，避免重复代码
     return collidesWithWall(item->sceneBoundingRect());
 }
 
 bool TileMap::collidesWithWall(const QRectF &rect) const
 {
     if (walls.isEmpty()) return false;
-
     int gridPixelSize = tileSize * GRID_SIZE;
-    // 计算 rect 覆盖的网格范围
     int minGridX = static_cast<int>(rect.left()) / gridPixelSize;
     int maxGridX = static_cast<int>(rect.right()) / gridPixelSize;
     int minGridY = static_cast<int>(rect.top()) / gridPixelSize;
     int maxGridY = static_cast<int>(rect.bottom()) / gridPixelSize;
 
-    // 只遍历这些网格内的墙壁
     for (int gx = minGridX; gx <= maxGridX; ++gx) {
         for (int gy = minGridY; gy <= maxGridY; ++gy) {
             auto it = gridWalls.find({gx, gy});
