@@ -22,6 +22,7 @@ public:
     bool collidesWithWall(QGraphicsItem *item) const;
     bool collidesWithWall(const QRectF &rect) const;
     void addWallTile(Tile *tile);
+    void removeWallTile(Tile *tile);
 
     // ========== 新增：水碰撞（仅玩家） ==========
     void addWaterTile(Tile *tile);                       // 添加水瓦片到空间索引

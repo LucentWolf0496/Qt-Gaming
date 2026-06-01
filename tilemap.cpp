@@ -161,3 +161,14 @@ bool TileMap::collidesWithWater(const QRectF &rect) const
     }
     return false;
 }
+
+void TileMap::removeWallTile(Tile *tile)
+{
+    if (!tile) return;
+    // 从墙壁列表中移除
+    walls.removeAll(tile);
+    // 同时从 allTiles 中移除（可选，便于统一清理，但并非必须）
+    allTiles.removeAll(tile);
+    // 重建空间索引（因为墙壁数量少，重建开销可接受）
+    buildSpatialGrid();
+}

@@ -10,6 +10,7 @@
 #include "maploader.h"   // 必须包含，因为使用了 Portal 结构体
 #include "skill.h"
 #include "enemy.h"
+#include "tile.h"
 
 class Player;
 class TileMap;
@@ -179,6 +180,24 @@ private:
     static const int FIRE_DAMAGE_INTERVAL = 30;  // 每30帧扣1血（0.5秒）
 
     void applyTerrainEffects();           // 应用地形效果（火焰、草地等）
+
+        // ========== 钥匙系统 ==========
+    float keyCount = 0.0f;                // 当前钥匙数量（支持0.25累加）
+    QVector<Tile*> chests;                // 场景中所有宝箱
+    QVector<Tile*> doors;                 // 场景中所有门
+
+    /** 检查玩家与宝箱/门的交互 */
+    void checkInteractions();
+    /** 打开宝箱（增加钥匙，移除宝箱） */
+    void openChest(Tile *chest);
+    /** 更新 UI 上钥匙数量的显示 */
+    void updateKeyDisplay();
+
+    // HUD 钥匙文本（在已有的 HUD 成员附近添加）
+    QGraphicsSimpleTextItem *hudKeyText = nullptr;
+
+    /** 移除与指定门瓦片相连的所有门区域（BFS） */
+    int removeDoorRegion(Tile *startDoor);
 };
 
 #endif // GAME_H

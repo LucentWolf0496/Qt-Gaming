@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QtMath>  // qSqrt
 #include <QImageReader>
+#include <QQueue>
+#include <QSet>
 
 namespace {
     QVector<QPixmap> g_bombFrames;
@@ -188,6 +190,7 @@ Game::~Game()
     if (hudMpFg) { delete hudMpFg; hudMpFg = nullptr; }
     if (hudText) { delete hudText; hudText = nullptr; }
     if (hudLevelText) { delete hudLevelText; hudLevelText = nullptr; }
+    if (hudKeyText) delete hudKeyText;
 
     delete tileMap;
     delete player;
@@ -278,9 +281,16 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     if (hudExpFg) { delete hudExpFg; hudExpFg = nullptr; }
     if (hudText) { delete hudText; hudText = nullptr; }
     if (hudLevelText) { delete hudLevelText; hudLevelText = nullptr; }
+    if (hudKeyText) { delete hudKeyText; hudKeyText = nullptr; }
 
     // 清空可攻击对象列表
     hittableItems.clear();
+
+    // 清空宝箱和门列表（旧列表中的 Tile 对象将在场景清理时自动删除）
+    chests.clear();
+    doors.clear();
+    // 跨地图传送时宝箱和门重置，钥匙计数也重置
+    keyCount = 0.0f;
 
     // 清除场景中所有已有项（瓦片、碰撞体等）
     QList<QGraphicsItem*> items = scene->items();
@@ -442,6 +452,25 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                         else if (layerName == "wall") {
                             int r = QRandomGenerator::global()->bounded(3);
                             finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                        }
+                        // 宝箱图层：加入 chests 列表
+                        else if (layerName == "chest") {
+                            finalPath = layerImageMap.value("chest", ":/images/chest.png");
+                            Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
+                            scene->addItem(tile);
+                            chests.append(tile);       // 存入宝箱列表
+                            tileCount++;
+                            continue;                  // 跳过后面的通用创建
+                        }
+                        // 门图层：加入 doors 列表，并添加碰撞
+                        else if (layerName == "door") {
+                            finalPath = layerImageMap.value("door", ":/images/door.png");
+                            Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
+                            scene->addItem(tile);
+                            doors.append(tile);        // 存入门列表
+                            tileMap->addWallTile(tile); // 门具有碰撞体积
+                            tileCount++;
+                            continue;                  // 跳过后面的通用创建
                         }
                         // 其他图层：从映射表获取或使用默认图片
                         else {
@@ -701,6 +730,7 @@ void Game::updateGame()
     updateSpawners();          // ← 更新所有巢穴
     updateHud();               // ← 更新 HUD 位置和数值
     checkPortal();
+    checkInteractions();
 }
 
 void Game::checkPortal()
@@ -1278,6 +1308,15 @@ void Game::createHud()
     lvlFont.setBold(true);
     hudLevelText->setFont(lvlFont);
     scene->addItem(hudLevelText);
+
+    // 钥匙数量显示（金色）
+    hudKeyText = new QGraphicsSimpleTextItem();
+    hudKeyText->setBrush(QBrush(QColor(255, 215, 0)));
+    QFont keyFont = hudKeyText->font();
+    keyFont.setPointSize(12);
+    keyFont.setBold(true);
+    hudKeyText->setFont(keyFont);
+    scene->addItem(hudKeyText);
 }
 
 void Game::updateHud()
@@ -1329,6 +1368,19 @@ void Game::updateHud()
     hudExpFg->setZValue(1001);
     hudText->setZValue(1002);
     hudLevelText->setZValue(1002);
+
+    if (hudKeyText) {
+        hudKeyText->setText(QString("🔑 Keys: %1").arg(keyCount));
+        hudKeyText->setPos(hudPos.x() + 2, hudPos.y() + 80); // 放在 HP 条下方
+        hudKeyText->setZValue(1002);
+    }
+}
+
+void Game::updateKeyDisplay()
+{
+    if (hudKeyText) {
+        hudKeyText->setText(QString("🔑 Keys: %1").arg(keyCount, 0, 'f', 2));
+    }
 }
 
 void Game::addEnemyProjectile(EnemyProjectile *ep)
@@ -1619,4 +1671,136 @@ void Game::applyTerrainEffects()
     } else {
         fireDamageCounter = 0;   // 离开火焰重置计时器
     }
+}
+
+void Game::checkInteractions()
+{
+    if (!player) return;
+    QRectF playerRect = player->hitboxRect();   // 已在开头定义
+
+    // 检测宝箱
+    for (int i = chests.size() - 1; i >= 0; --i) {
+        Tile *chest = chests[i];
+        if (playerRect.intersects(chest->sceneBoundingRect())) {
+            openChest(chest);
+            chests.removeAt(i);
+            break;
+        }
+    }
+
+    // 检测门（BFS 整片移除）
+    for (int i = doors.size() - 1; i >= 0; --i) {
+        Tile *door = doors[i];
+        QRectF doorRect = door->sceneBoundingRect();
+        int expand = tileMap->getTileWidth();  // 32
+        QRectF extendedRect = doorRect.adjusted(-expand, -expand, expand, expand);
+        // 直接使用外层的 playerRect，不要再定义新的
+        if (playerRect.intersects(extendedRect)) {
+            if (keyCount > 0) {
+                int removed = removeDoorRegion(door);
+                if (removed > 0) {
+                    keyCount -= 1.0f;
+                    updateKeyDisplay();
+                    qDebug() << "Door region opened! Keys left:" << keyCount;
+                    // 开门特效
+                    QPointF regionCenter = doorRect.center();
+                    QGraphicsEllipseItem *effect = new QGraphicsEllipseItem(-30, -30, 60, 60);
+                    effect->setBrush(QBrush(QColor(0, 255, 0, 150)));
+                    effect->setPen(Qt::NoPen);
+                    effect->setPos(regionCenter);
+                    scene->addItem(effect);
+                    QTimer::singleShot(200, [effect]() {
+                        if (effect->scene()) effect->scene()->removeItem(effect);
+                        delete effect;
+                    });
+                }
+                break;
+            } else {  }
+        }
+    }
+}
+
+void Game::openChest(Tile *chest)
+{
+    keyCount += 0.25f;
+    qDebug() << "Chest opened! Keys:" << keyCount;
+
+    // 可选：播放简易开箱特效（金色闪光）
+    QPointF center = chest->sceneBoundingRect().center();
+    QGraphicsEllipseItem *effect = new QGraphicsEllipseItem(-15, -15, 30, 30);
+    effect->setBrush(QBrush(QColor(255, 215, 0, 200)));
+    effect->setPen(Qt::NoPen);
+    effect->setPos(center);
+    scene->addItem(effect);
+    QTimer::singleShot(200, [effect]() {
+        if (effect->scene()) effect->scene()->removeItem(effect);
+        delete effect;
+    });
+
+    // 移除宝箱
+    scene->removeItem(chest);
+    delete chest;
+
+    updateKeyDisplay();
+}
+
+int Game::removeDoorRegion(Tile *startDoor)
+{
+    if (!startDoor || !tileMap) return 0;
+
+    int tileW = tileMap->getTileWidth();
+    int tileH = tileMap->getTileHeight();
+
+    // BFS 队列
+    QQueue<Tile*> queue;
+    QSet<Tile*> visited;
+
+    queue.enqueue(startDoor);
+    visited.insert(startDoor);
+
+    while (!queue.isEmpty()) {
+        Tile *current = queue.dequeue();
+
+        // 获取当前瓦片的位置（格子坐标）
+        QPointF pos = current->pos();
+        int gx = qRound(pos.x() / tileW);
+        int gy = qRound(pos.y() / tileH);
+
+        // 检查四个方向的邻居
+        QVector<QPoint> dirs = { QPoint(1,0), QPoint(-1,0), QPoint(0,1), QPoint(0,-1) };
+        for (const QPoint &d : dirs) {
+            int nx = gx + d.x();
+            int ny = gy + d.y();
+            QPointF neighborPos(nx * tileW, ny * tileH);
+
+            // 在 doors 列表中查找相同位置的瓦片
+            for (Tile *door : doors) {
+                if (visited.contains(door)) continue;
+                if (door->pos() == neighborPos) {
+                    visited.insert(door);
+                    queue.enqueue(door);
+                    break;
+                }
+            }
+        }
+    }
+
+    // 删除所有连通的门瓦片
+    int removedCount = 0;
+    for (Tile *door : visited) {
+        // 从碰撞系统中移除
+        tileMap->removeWallTile(door);
+        // 从场景中移除并删除
+        scene->removeItem(door);
+        delete door;
+        removedCount++;
+    }
+
+    // 从 doors 列表中移除这些瓦片
+    for (Tile *door : visited) {
+        doors.removeAll(door);
+    }
+
+    qDebug() << "Removed" << removedCount << "connected door tiles with one key.";
+    return removedCount;
 }
