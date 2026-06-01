@@ -15,12 +15,11 @@ public:
     ~Player();
 
     void move(bool up, bool down, bool left, bool right);
-    /** 碰撞判定框：显示 64×64，但只取右下角 32×32 做墙碰撞 */
     QRectF hitboxRect() const {
         if (level <= 1) {
-            return QRectF(x(), y(), 32, 32); // 1级：整个32×32都是碰撞框
+            return QRectF(x(), y(), 32, 32);
         } else {
-            return QRectF(x() + 32, y() + 32, 32, 32); // 2级+：右下角32×32
+            return QRectF(x() + 32, y() + 32, 32, 32);
         }
     }
     int getDisplaySize() const { return (level <= 1) ? 32 : 64; }
@@ -44,11 +43,15 @@ public:
     // ========== 形态切换 ==========
     void setEnhanced(bool enhanced);
     bool getEnhanced() const { return isEnhanced; }
-    void playCastAnimation(const QString &gifPath, int frameInterval = 2); // 播放施法动画，frameInterval=每几帧切一帧
-    void updateCastAnimation();                     // 每帧更新施法动画（手动切帧）
+    void playCastAnimation(const QString &gifPath, int frameInterval = 2);
+    void updateCastAnimation();
+
+    // ========== 死亡重置 ==========
+    void reset();          // 新增：重置玩家到初始状态
 
 signals:
     void levelUp(int newLevel);
+    void died();           // 新增：死亡信号
 
 private slots:
     void onFrameChanged(int frame);
@@ -67,16 +70,15 @@ private:
     int maxExp = 100;
     int level = 1;
 
-    // 动画状态
-    bool facingRight = true;   // 当前朝向
-    bool isRunning = false;    // 是否在跑动
-    bool isEnhanced = false;   // 是否增强形态（10级）
-    bool isCasting = false;    // 是否正在播放施法动画
-    QVector<QPixmap> castFrames; // 预加载的施法动画帧
-    int castFrameIdx = 0;      // 当前施法帧索引
-    int castFrameTick = 0;     // 施法帧切换计数器
-    int castFrameInterval = 2; // 每几帧切一帧（越小越快）
-    QString currentGifPath;    // 当前播放的 GIF 路径
+    bool facingRight = true;
+    bool isRunning = false;
+    bool isEnhanced = false;
+    bool isCasting = false;
+    QVector<QPixmap> castFrames;
+    int castFrameIdx = 0;
+    int castFrameTick = 0;
+    int castFrameInterval = 2;
+    QString currentGifPath;
 
     void updateAnimationState(bool moving, bool right);
 };

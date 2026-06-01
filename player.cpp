@@ -201,6 +201,9 @@ void Player::takeDamage(int dmg)
     hp -= dmg;
     if (hp < 0) hp = 0;
     qDebug() << "Player took damage:" << dmg << "HP:" << hp << "/" << maxHp;
+    if (hp == 0) {
+        emit died();   // 发射死亡信号
+    }
 }
 
 bool Player::consumeMp(int cost)
@@ -242,4 +245,26 @@ void Player::addExp(int amount)
                  << "MP:" << mp << "/" << maxMp
                  << "Next EXP:" << maxExp;
     }
+}
+
+// 在 player.cpp 末尾或其他合适位置添加
+void Player::reset()
+{
+    // 重置等级与经验
+    level = 1;
+    exp = 0;
+    maxExp = 100;
+    // 重置 HP/MP
+    hp = 100;
+    maxHp = 100;
+    mp = 100;
+    maxMp = 100;
+    // 关闭增强形态
+    setEnhanced(false);
+    // 强制刷新动画（重新计算缩放和GIF）
+    currentGifPath.clear();
+    updateAnimationState(isRunning, facingRight);
+    // 重新计算显示大小（等级1是32x32）
+    onFrameChanged(0);
+    qDebug() << "Player reset to level 1, HP/MP full.";
 }

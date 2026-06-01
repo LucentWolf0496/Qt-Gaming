@@ -39,10 +39,12 @@ public:
     /** 获取当前场上敌人数量 */
     int getEnemyCount() const { return enemies.size(); }
 
+// game.h 中的 private slots 部分
 private slots:
     void updateGame();
     void checkPortal();
-    void performTeleport(const Portal &portal); // 现在 Portal 已定义
+    void performTeleport(const Portal &portal);
+    void onPlayerDied();   // 新增
 
 private:
     QGraphicsScene *scene = nullptr;
@@ -157,7 +159,6 @@ private:
     /** 根据当前按键状态获取闪现/刀浪方向向量 */
     QPointF getCurrentDirectionVector();
 
-private:
     // ========== 敌人系统 ==========
     QVector<Enemy*> enemies;                // 所有活跃敌人
     QVector<EnemyProjectile*> enemyProjectiles; // 所有活跃敌人炮弹
@@ -172,6 +173,12 @@ private:
 
     /** 每帧更新所有巢穴 */
     void updateSpawners();
+
+    QVector<QRectF> fireRects;           // 火焰区域矩形列表
+    int fireDamageCounter = 0;            // 火焰伤害计时器
+    static const int FIRE_DAMAGE_INTERVAL = 30;  // 每30帧扣1血（0.5秒）
+
+    void applyTerrainEffects();           // 应用地形效果（火焰、草地等）
 };
 
 #endif // GAME_H

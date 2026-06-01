@@ -290,6 +290,9 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     }
     qDebug() << "[loadMap] Scene cleared.";
 
+    // loadMap 函数开头，清理旧数据的地方添加
+    fireRects.clear();
+
     // ---------- 3. 创建新地图 ----------
     tileMap = new TileMap();
     if (!tileMap->loadFromFile(mapFilePath)) {
@@ -316,124 +319,168 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     }
     qDebug() << "[loadMap] TileMap loaded successfully.";
 
-// ================= 手动绘制所有图层（包括 floor 和 wall）=================
-QFile file(mapFilePath);
-if (file.open(QIODevice::ReadOnly)) {
-    QByteArray jsonData = file.readAll();
-    QJsonDocument doc = QJsonDocument::fromJson(jsonData);
-    if (!doc.isNull()) {
-        QJsonObject root = doc.object();
-        int mapWidth = root["width"].toInt();
-        int mapHeight = root["height"].toInt();
-        int tileWidth = root["tilewidth"].toInt();
-        int tileHeight = root["tileheight"].toInt();
+    // ================= 手动绘制所有图层（包括 floor 和 wall）=================
+    QFile file(mapFilePath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QByteArray jsonData = file.readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+        if (!doc.isNull()) {
+            QJsonObject root = doc.object();
+            int mapWidth = root["width"].toInt();
+            int mapHeight = root["height"].toInt();
+            int tileWidth = root["tilewidth"].toInt();
+            int tileHeight = root["tileheight"].toInt();
 
-        // 图层名 -> 图片路径映射（为所有图层提供默认图片）
-        QMap<QString, QString> layerImageMap;
-        // 通用装饰层
-        layerImageMap["door"]   = ":/images/door.png";
-        layerImageMap["chest"]  = ":/images/chest.png";
-        layerImageMap["boss"]   = ":/images/boss.png";
-        layerImageMap["boss_image"] = ":/images/boss.png";
-        layerImageMap["portal"] = ":/images/portal.png";
-        layerImageMap["portal_image"] = ":/images/portal.png";
-        layerImageMap["minion"] = ":/images/minion.png";
-        layerImageMap["minion_image"] = ":/images/minion.png";
-        layerImageMap["water"]  = ":/images/water.png";
-        layerImageMap["grass"]  = ":/images/grass.png";
-        layerImageMap["rock"]   = ":/images/rock.png";
-        layerImageMap["fireland"] = ":/images/fire.png";
-        layerImageMap["elite"]  = ":/images/elite.png";
-        layerImageMap["stair"]  = ":/images/stair.png";
-        // floor 和 wall 不使用固定图片，而是随机纹理，在循环中单独处理
+            // 图层名 -> 图片路径映射（为所有图层提供默认图片）
+            QMap<QString, QString> layerImageMap;
+            // 通用装饰层
+            layerImageMap["door"]   = ":/images/door.png";
+            layerImageMap["chest"]  = ":/images/chest.png";
+            layerImageMap["boss"]   = ":/images/boss.png";
+            layerImageMap["boss_image"] = ":/images/boss.png";
+            layerImageMap["portal"] = ":/images/portal.png";
+            layerImageMap["portal_image"] = ":/images/portal.png";
+            layerImageMap["minion"] = ":/images/minion.png";
+            layerImageMap["minion_image"] = ":/images/minion.png";
+            layerImageMap["water"]  = ":/images/water.png";
+            layerImageMap["grass"]  = ":/images/grass.png";
+            layerImageMap["rock"]   = ":/images/rock.png";
+            layerImageMap["fireland"] = ":/images/fire.png";
+            layerImageMap["elite"]  = ":/images/elite.png";
+            layerImageMap["stair"]  = ":/images/stair.png";
+            // floor 和 wall 不使用固定图片，而是随机纹理，在循环中单独处理
 
-        QJsonArray layers = root["layers"].toArray();
-        for (const QJsonValue &layerVal : layers) {
-            QJsonObject layerObj = layerVal.toObject();
-            QString layerName = layerObj["name"].toString();
-            if (layerObj["type"].toString() != "tilelayer") continue;
+            QJsonArray layers = root["layers"].toArray();
+            for (const QJsonValue &layerVal : layers) {
+                QJsonObject layerObj = layerVal.toObject();
+                QString layerName = layerObj["name"].toString();
+                if (layerObj["type"].toString() != "tilelayer") continue;
 
-            QJsonArray dataArr = layerObj["data"].toArray();
-            if (dataArr.size() != mapWidth * mapHeight) continue;
+                QJsonArray dataArr = layerObj["data"].toArray();
+                if (dataArr.size() != mapWidth * mapHeight) continue;
 
-            // ========== 处理 minion / minion_image 图层（生成 Enemy）==========
-            if (layerName == "minion" || layerName == "minion_image") {
-                int enemyCount = 0;
+                // ========== 处理 minion / minion_image 图层（生成 Enemy）==========
+                if (layerName == "minion" || layerName == "minion_image") {
+                    int enemyCount = 0;
+                    for (int y = 0; y < mapHeight; ++y) {
+                        for (int x = 0; x < mapWidth; ++x) {
+                            int rawGid = dataArr[y * mapWidth + x].toInt();
+                            int cleanGid = rawGid & 0x1FFFFFFF;
+                            if (cleanGid == 0) continue;
+                            Enemy *enemy = new Enemy(tileMap, scene,
+                                                     QPointF(x * tileWidth, y * tileHeight),
+                                                     this);
+                            enemies.append(enemy);
+                            hittableItems.append(enemy);
+                            enemyCount++;
+                        }
+                    }
+                    qDebug() << "[ManualDraw] Minion layer" << layerName << "created" << enemyCount << "enemies";
+                    continue;
+                }
+
+                // ========== 处理 water 图层（阻挡玩家，不阻挡子弹）==========
+                if (layerName == "water") {
+                    QVector<Tile*> waterTiles;   // 临时数组
+                    int waterCount = 0;
+                    for (int y = 0; y < mapHeight; ++y) {
+                        for (int x = 0; x < mapWidth; ++x) {
+                            int rawGid = dataArr[y * mapWidth + x].toInt();
+                            int cleanGid = rawGid & 0x1FFFFFFF;
+                            if (cleanGid == 0) continue;
+                            Tile *waterTile = new Tile(layerImageMap["water"], x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+                            scene->addItem(waterTile);
+                            waterTiles.append(waterTile);   // 先收集，不调用 addWaterTile
+                            waterCount++;
+                        }
+                    }
+                    // 批量添加到 tileMap，一次性重建网格
+                    if (!waterTiles.isEmpty()) {
+                        tileMap->addWaterTiles(waterTiles);
+                    }
+                    qDebug() << "[ManualDraw] Water layer created" << waterCount << "water tiles";
+                    continue;
+                }
+
+                // ========== 处理 fireland 图层（持续掉血）==========
+                if (layerName == "fireland") {
+                    int fireCount = 0;
+                    for (int y = 0; y < mapHeight; ++y) {
+                        for (int x = 0; x < mapWidth; ++x) {
+                            int rawGid = dataArr[y * mapWidth + x].toInt();
+                            int cleanGid = rawGid & 0x1FFFFFFF;
+                            if (cleanGid == 0) continue;
+                            // 记录火焰区域的矩形（用于每帧检测）
+                            fireRects.append(QRectF(x * tileWidth, y * tileHeight, tileWidth, tileHeight));
+                            // 同时创建视觉效果（显示火焰图片）
+                            Tile *fireTile = new Tile(layerImageMap["fireland"], x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+                            scene->addItem(fireTile);
+                            fireCount++;
+                        }
+                    }
+                    qDebug() << "[ManualDraw] Fireland layer created" << fireCount << "tiles";
+                    continue;  // 跳过普通瓦片创建
+                }
+
+                // ========== 普通瓦片图层（包括 floor, wall 和所有装饰）==========
+                int tileCount = 0;
                 for (int y = 0; y < mapHeight; ++y) {
                     for (int x = 0; x < mapWidth; ++x) {
                         int rawGid = dataArr[y * mapWidth + x].toInt();
                         int cleanGid = rawGid & 0x1FFFFFFF;
                         if (cleanGid == 0) continue;
-                        Enemy *enemy = new Enemy(tileMap, scene,
-                                                 QPointF(x * tileWidth, y * tileHeight),
-                                                 this);
-                        enemies.append(enemy);
-                        hittableItems.append(enemy);
-                        enemyCount++;
-                    }
-                }
-                qDebug() << "[ManualDraw] Minion layer" << layerName << "created" << enemyCount << "enemies";
-                continue;
-            }
 
-            // ========== 普通瓦片图层（包括 floor, wall 和所有装饰）==========
-            int tileCount = 0;
-            for (int y = 0; y < mapHeight; ++y) {
-                for (int x = 0; x < mapWidth; ++x) {
-                    int rawGid = dataArr[y * mapWidth + x].toInt();
-                    int cleanGid = rawGid & 0x1FFFFFFF;
-                    if (cleanGid == 0) continue;
+                        QString finalPath;
+                        QSize fixedSize(tileWidth, tileHeight);
 
-                    QString finalPath;
-                    QSize fixedSize(tileWidth, tileHeight);
+                        // 地板随机纹理
+                        if (layerName == "floor") {
+                            finalPath = (QRandomGenerator::global()->bounded(2) == 0)
+                                        ? ":/images/floor_dark.png" : ":/images/floor_light.png";
+                        }
+                        // 墙壁随机纹理
+                        else if (layerName == "wall") {
+                            int r = QRandomGenerator::global()->bounded(3);
+                            finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                        }
+                        // 其他图层：从映射表获取或使用默认图片
+                        else {
+                            finalPath = layerImageMap.value(layerName, "");
+                            if (finalPath.isEmpty()) {
+                                finalPath = ":/images/" + layerName + ".png";
+                                qDebug() << "[ManualDraw] No mapping for layer" << layerName << ", using" << finalPath;
+                            }
+                        }
 
-                    // 地板随机纹理
-                    if (layerName == "floor") {
-                        finalPath = (QRandomGenerator::global()->bounded(2) == 0)
-                                    ? ":/images/floor_dark.png" : ":/images/floor_light.png";
-                    }
-                    // 墙壁随机纹理
-                    else if (layerName == "wall") {
-                        int r = QRandomGenerator::global()->bounded(3);
-                        finalPath = QString(":/images/wall_%1.png").arg(r + 1);
-                    }
-                    // 其他图层：从映射表获取或使用默认图片
-                    else {
-                        finalPath = layerImageMap.value(layerName, "");
-                        if (finalPath.isEmpty()) {
-                            finalPath = ":/images/" + layerName + ".png";
-                            qDebug() << "[ManualDraw] No mapping for layer" << layerName << ", using" << finalPath;
+                        Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
+                        scene->addItem(tile);
+                        tileCount++;
+
+                        // 墙壁需要加入碰撞系统
+                        if (layerName == "wall") {
+                            tileMap->addWallTile(tile);
+                        }
+
+                        // Boss / elite 图块加入可攻击列表
+                        if (layerName == "boss" || layerName == "boss_image" || layerName == "elite") {
+                            hittableItems.append(tile);
                         }
                     }
-
-                    Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
-                    scene->addItem(tile);
-                    tileCount++;
-
-                    // 墙壁需要加入碰撞系统
-                    if (layerName == "wall") {
-                        tileMap->addWallTile(tile);
-                    }
-
-                    // Boss / elite 图块加入可攻击列表
-                    if (layerName == "boss" || layerName == "boss_image" || layerName == "elite") {
-                        hittableItems.append(tile);
-                    }
                 }
+                qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles";
             }
-            qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles";
+        } else {
+            qDebug() << "[ManualDraw] Failed to parse JSON for manual drawing:" << mapFilePath;
         }
+        file.close();
     } else {
-        qDebug() << "[ManualDraw] Failed to parse JSON for manual drawing:" << mapFilePath;
+        qDebug() << "[ManualDraw] Cannot open map file for manual drawing:" << mapFilePath;
     }
-    file.close();
-} else {
-    qDebug() << "[ManualDraw] Cannot open map file for manual drawing:" << mapFilePath;
-}
 
     // ---------- 4. 创建玩家 ----------
     player = new Player(tileMap);
     scene->addItem(player);
+    connect(player, &Player::died, this, &Game::onPlayerDied);   // 连接死亡信号
     qDebug() << "[loadMap] Player created.";
 
     // ---------- 5. 创建背后火焰（如果已解锁）----------
@@ -601,10 +648,16 @@ void Game::updateGame()
         }
         centerOn(player);
     }
+
     // 正常移动
     else if (player) {
+        QPointF oldPos = player->pos();                    // 记录移动前位置
         player->move(upPressed, downPressed, leftPressed, rightPressed);
-        player->updateCastAnimation(); // 更新施法动画（手动切帧）
+        // ========== 新增：水碰撞回退 ==========
+        if (tileMap->collidesWithWater(player->hitboxRect())) {
+            player->setPos(oldPos);                        // 回退到移动前
+        }
+        player->updateCastAnimation();
         centerOn(player);
     }
 
@@ -624,6 +677,7 @@ void Game::updateGame()
     updateBladeWaves();         // ← 更新所有刀浪
     updateDaolangWaves();       // ← 更新所有GIF刀浪
     updateShieldPosition();    // ← 更新玄武盾跟随玩家
+    applyTerrainEffects();
 
     // 更新宠物
     if (pet && player) {
@@ -1513,5 +1567,56 @@ void Game::performTeleport(const Portal &portal)
             canTeleport = true;
             isTeleporting = false;
         });
+    }
+}
+
+void Game::onPlayerDied()
+{
+    if (!player || !tileMap) return;
+
+    // 重置玩家属性（等级、HP、MP等）
+    player->reset();
+
+    // 传送到当前地图的出生点
+    QPointF startPos = tileMap->getPlayerStart();
+    if (startPos.isNull()) {
+        startPos = QPointF(100, 100);
+    }
+    player->setPos(startPos);
+
+    // 重置传送冷却（避免死后立即传送造成bug）
+    canTeleport = true;
+    isTeleporting = false;
+
+    // 摄像头重新对准
+    centerOn(player);
+
+    qDebug() << "Player died and respawned at start:" << startPos;
+}
+
+void Game::applyTerrainEffects()
+{
+    if (!player) return;
+
+    QRectF playerRect = player->hitboxRect();
+
+    // 火焰区域伤害
+    bool onFire = false;
+    for (const QRectF &rect : fireRects) {
+        if (playerRect.intersects(rect)) {
+            onFire = true;
+            break;
+        }
+    }
+
+    if (onFire) {
+        fireDamageCounter++;
+        if (fireDamageCounter >= FIRE_DAMAGE_INTERVAL) {
+            fireDamageCounter = 0;
+            player->takeDamage(5);   // 每次扣1血
+            qDebug() << "Fireland damage! HP:" << player->getHp();
+        }
+    } else {
+        fireDamageCounter = 0;   // 离开火焰重置计时器
     }
 }

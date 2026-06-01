@@ -1,3 +1,4 @@
+// tilemap.cpp
 #include "tilemap.h"
 #include "maploader.h"
 #include <QDebug>
@@ -19,6 +20,11 @@ void TileMap::clear()
     allTiles.clear();
     walls.clear();
     gridWalls.clear();
+
+    // ========== 清理水相关 ==========
+    waterTiles.clear();
+    gridWaters.clear();
+
     portals.clear();
     playerStart = QPointF();
     mapWidth = 0;
@@ -35,18 +41,14 @@ bool TileMap::loadFromFile(const QString &jsonPath)
         return false;
     }
 
-    // 只保存地图基本尺寸和瓦片大小
     tileSize = mapData.tileWidth;
     mapWidth = mapData.width;
     mapHeight = mapData.height;
 
-    // 保存传送门和玩家出生点（从对象层解析）
     portals = mapData.portals;
     playerStart = mapData.playerStart.position;
 
-    // 注意：这里不再创建任何瓦片！
-    // 所有瓦片（包括 floor, wall, 装饰）都由 Game 类手动绘制
-
+    // 注意：瓦片由 Game 类手动绘制，本函数只保存元数据
     return true;
 }
 
@@ -54,9 +56,7 @@ void TileMap::addWallTile(Tile *tile)
 {
     if (!tile) return;
     walls.append(tile);
-    allTiles.append(tile);      // 加入 allTiles 以便统一清理
-    // 增量添加到空间索引（简单起见，重建整个索引）
-    // 或者为了性能可以只添加当前墙壁，但重建开销不大（墙壁数量有限）
+    allTiles.append(tile);
     buildSpatialGrid();
 }
 
@@ -71,7 +71,6 @@ void TileMap::buildSpatialGrid()
         int gridY = static_cast<int>(wy) / gridPixelSize;
         gridWalls[{gridX, gridY}].append(wall);
     }
-    // qDebug() << "[SpatialGrid] Built with" << gridWalls.size() << "grid cells.";
 }
 
 QPair<int,int> TileMap::getGridCoord(int x, int y) const
@@ -101,6 +100,60 @@ bool TileMap::collidesWithWall(const QRectF &rect) const
             if (it != gridWalls.end()) {
                 for (Tile *wall : it.value()) {
                     if (wall->sceneBoundingRect().intersects(rect))
+                        return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// ========== 水的实现 ==========
+
+void TileMap::addWaterTile(Tile *tile)
+{
+    if (!tile) return;
+    waterTiles.append(tile);
+    allTiles.append(tile);
+    buildWaterGrid();
+}
+
+void TileMap::buildWaterGrid()
+{
+    gridWaters.clear();
+    int gridPixelSize = tileSize * GRID_SIZE;
+    for (Tile *water : waterTiles) {
+        qreal wx = water->x();
+        qreal wy = water->y();
+        int gridX = static_cast<int>(wx) / gridPixelSize;
+        int gridY = static_cast<int>(wy) / gridPixelSize;
+        gridWaters[{gridX, gridY}].append(water);
+    }
+}
+
+void TileMap::addWaterTiles(const QVector<Tile*> &tiles)
+{
+    if (tiles.isEmpty()) return;
+    waterTiles.append(tiles);
+    allTiles.append(tiles);
+    buildWaterGrid();   // 一次性重建
+}
+
+bool TileMap::collidesWithWater(const QRectF &rect) const
+{
+    if (waterTiles.isEmpty()) return false;
+    int gridPixelSize = tileSize * GRID_SIZE;
+    int minGridX = static_cast<int>(rect.left()) / gridPixelSize;
+    int maxGridX = static_cast<int>(rect.right()) / gridPixelSize;
+    int minGridY = static_cast<int>(rect.top()) / gridPixelSize;
+    int maxGridY = static_cast<int>(rect.bottom()) / gridPixelSize;
+
+    for (int gx = minGridX; gx <= maxGridX; ++gx) {
+        for (int gy = minGridY; gy <= maxGridY; ++gy) {
+            auto it = gridWaters.find({gx, gy});
+            if (it != gridWaters.end()) {
+                for (Tile *water : it.value()) {
+                    if (water->sceneBoundingRect().intersects(rect))
                         return true;
                 }
             }
