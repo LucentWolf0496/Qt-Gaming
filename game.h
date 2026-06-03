@@ -286,6 +286,15 @@ private:
     void hideGameMenu();             // 隐藏游戏内菜单（恢复游戏）
 
     void updateGameMenuButtonPosition();  // 更新按钮位置跟随屏幕右上角
+
+    // ========== 地图介绍对话框 ==========
+    bool introShownForSchoolMap;           // 校史馆介绍是否已显示
+    QSet<QString> introShownForTargetMaps; // 已显示过介绍的目标地图（存地图文件名）
+
+    void checkAndShowIntro();              // 在 updateGame 中检测并显示介绍
+    void showIntroDialog(const QString &mapKey); // 显示介绍对话框，参数为地图标识
+    bool waitingForIntro = false;    // 是否等待玩家离开传送门以显示介绍
+    QString waitingIntroMap;         // 等待显示介绍的地图路径
 };
 
 #endif // GAME_H

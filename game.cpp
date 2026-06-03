@@ -12,13 +12,18 @@
 #include <QJsonArray>
 #include <QFileInfo>
 #include <QTextStream>
-#include <QtMath>  // qSqrt
+#include <QtMath>
 #include <QImageReader>
 #include <QQueue>
 #include <QSet>
 #include <QPainter>
 #include <QMessageBox>
 #include <QApplication>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QLabel>
+#include <QTextBrowser>
+#include <QPushButton>
 
 namespace {
     QVector<QPixmap> g_bombFrames;
@@ -117,6 +122,7 @@ Game::Game(QWidget *parent)
       mainMenuStartItem(nullptr), mainMenuAboutItem(nullptr), mainMenuExitItem(nullptr),
       gameMenuButton(nullptr),
       gameMenuContinueItem(nullptr), gameMenuAboutItem(nullptr), gameMenuExitItem(nullptr)
+      , introShownForSchoolMap(false)
 {
     scene = new QGraphicsScene(this);
     setScene(scene);
@@ -402,6 +408,125 @@ Game::~Game()
     delete player;
 }
 
+// 地图介绍配置（地图文件路径 -> 结构体）
+struct IntroConfig {
+    QString title;
+    QString description;
+    QString portraitPath;
+};
+
+static QMap<QString, IntroConfig> buildIntroMap() {
+    QMap<QString, IntroConfig> map;
+    map[":/maps/new_school_map.tmj"] = {
+        "校史馆",
+        "欢迎来到校史馆！\n\n这里是了解学校历史的起点。\n\n请在此接受初始训练，然后通过传送门前往其他地图探索。",
+        ":/images/player.png"  // 请准备相应立绘资源，若无则用默认
+    };
+    map[":/maps/chamber1.tmj"] = {
+        "密室",
+        "你来到了密室。\n\n这里隐藏着学校深层的秘密……",
+        ":/images/player.png"
+    };
+    map[":/maps/lianda.tmj"] = {
+        "西南联大",
+        "西南联大，战火中的教育奇迹。\n\n无数先辈在此求学，为中华崛起而奋斗。",
+        ":/images/player.png"
+    };
+    map[":/maps/Weiming_lake.tmj"] = {
+        "未名湖",
+        "未名湖，燕园明珠。\n\n湖光塔影，百年学府的象征。",
+        ":/images/player.png"
+    };
+    return map;
+}
+
+void Game::showIntroDialog(const QString &mapKey)
+{
+    static QMap<QString, IntroConfig> introMap = buildIntroMap();
+    if (!introMap.contains(mapKey)) return;
+
+    const IntroConfig &cfg = introMap[mapKey];
+
+    // 暂停游戏
+    if (gameTimer) gameTimer->stop();
+
+    // ========== 关键：清除所有移动按键状态，避免对话框关闭后继续移动 ==========
+    upPressed = downPressed = leftPressed = rightPressed = false;
+
+    // 创建模态对话框
+    QDialog dialog(this);
+    dialog.setWindowTitle(cfg.title);
+    dialog.setModal(true);
+    dialog.setFixedSize(500, 300);
+
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+
+    // 立绘（如果有）
+    QLabel *portraitLabel = new QLabel;
+    QPixmap portrait(cfg.portraitPath);
+    if (!portrait.isNull()) {
+        portrait = portrait.scaled(100, 100, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        portraitLabel->setPixmap(portrait);
+        portraitLabel->setAlignment(Qt::AlignCenter);
+        layout->addWidget(portraitLabel);
+    }
+
+    // 介绍文本
+    QTextBrowser *textBrowser = new QTextBrowser;
+    textBrowser->setPlainText(cfg.description);
+    textBrowser->setMinimumHeight(150);
+    layout->addWidget(textBrowser);
+
+    // 跳过按钮
+    QPushButton *skipBtn = new QPushButton("开始探索");
+    layout->addWidget(skipBtn, 0, Qt::AlignCenter);
+
+    QObject::connect(skipBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    // 显示对话框（阻塞）
+    dialog.exec();
+
+    // 再次清空，防止残留（可选，但推荐）
+    upPressed = downPressed = leftPressed = rightPressed = false;
+
+    // 恢复游戏
+    if (gameTimer) gameTimer->start(16);
+}
+
+void Game::checkAndShowIntro()
+{
+    if (!player || !tileMap || !scene) return;
+    // 如果已经有对话框显示或游戏暂停，不再检测
+    if (gamePaused || isGameMenuActive || isMainMenuActive) return;
+
+    QString currentMap = currentMapPath;
+
+    // 特殊处理：校史馆介绍（在出生点立刻触发，无需等待走出传送门）
+    if (currentMap.contains("new_school_map") && !introShownForSchoolMap) {
+        // 避免在传送过程中或玩家位置未设置时误触发
+        if (player->pos() != QPointF(0,0) && !isTeleporting) {
+            introShownForSchoolMap = true;
+            showIntroDialog(currentMap);
+        }
+        return;
+    }
+
+    // 其他地图：只有当该地图未被介绍过，并且是从校史馆传送过来，且玩家已离开传送门范围
+    if (!introShownForTargetMaps.contains(currentMap)) {
+        // 判断是否从校史馆传送过来的：我们可以在跨地图传送时记录一个标志
+        // 简单方案：检查当前地图是目标地图，且之前没有介绍，且玩家不在任何传送门附近（即已离开）
+        // 为了避免重复判断，我们在 performTeleport 中设置一个标志 waitingForIntro
+        // 下面实现该标志
+        if (waitingForIntro && waitingIntroMap == currentMap) {
+            if (!isNearPortal()) {
+                waitingForIntro = false;
+                introShownForTargetMaps.insert(currentMap);
+                showIntroDialog(currentMap);
+            }
+        }
+    }
+}
+
 void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
 {
     qDebug() << "[loadMap] Loading map:" << mapFilePath << "useStartPoint:" << useStartPoint;
@@ -417,6 +542,7 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     if (gameMenuButton) {
         gameMenuButton = nullptr; // 按钮将在场景清空时被删除，只需置空指针
     }
+
     // 清理旧地图
     if (tileMap) {
         delete tileMap;
@@ -1392,6 +1518,7 @@ void Game::updateGame()
 
     checkPortal();
     checkInteractions();
+    checkAndShowIntro();
     updateMinimap();            // ← 更新小地图红点位置
     updateDiamonds();           // ← 钻石动画与碰撞
     updatePetals();             // ← 梅花瓣粒子
@@ -2709,6 +2836,7 @@ void Game::performTeleport(const Portal &portal)
         });
     } else {
         // ----------------- 跨地图传送 -----------------
+        QString oldMapPath = currentMapPath;
         QString newMapPath = portal.targetMap;
         // 加载新地图，但不自动设置 start 点
         loadMap(newMapPath, false);
@@ -2722,7 +2850,6 @@ void Game::performTeleport(const Portal &portal)
             }
         }
         if (!found) {
-            // 备用：使用玩家起始点
             QPointF startPos = tileMap->getPlayerStart();
             if (!startPos.isNull()) {
                 safeTeleportTo(startPos);
@@ -2735,6 +2862,17 @@ void Game::performTeleport(const Portal &portal)
         if (pet) pet->resetToOwner(player->pos());
         // 传送到达特效
         spawnArrivalEffect(player->sceneBoundingRect().center());
+
+        // ========== 判断是否需要等待介绍 ==========
+        if (oldMapPath.contains("new_school_map") && 
+            (newMapPath.contains("chamber1") || newMapPath.contains("lianda") || newMapPath.contains("Weiming_lake"))) {
+            if (!introShownForTargetMaps.contains(newMapPath)) {
+                waitingForIntro = true;
+                waitingIntroMap = newMapPath;
+                qDebug() << "[Intro] Set waiting for" << newMapPath;
+            }
+        }
+
         // 跨地图冷却稍长
         QTimer::singleShot(5000, this, [this]() {
             canTeleport = true;
