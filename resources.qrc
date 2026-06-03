@@ -22,8 +22,46 @@
         <file>images/shikongxuanwo.png</file>
         <file>images/try_background_left.png</file>
         <file>images/try_background_right.png</file>
-        <!-- Water animation frames (40 frames) -->
-        <file>images/water/0000.png</file><file>images/water/0001.png</file><file>images/water/0002.png</file><file>images/water/0003.png</file><file>images/water/0004.png</file><file>images/water/0005.png</file><file>images/water/0006.png</file><file>images/water/0007.png</file><file>images/water/0008.png</file><file>images/water/0009.png</file><file>images/water/0010.png</file><file>images/water/0011.png</file><file>images/water/0012.png</file><file>images/water/0013.png</file><file>images/water/0014.png</file><file>images/water/0015.png</file><file>images/water/0016.png</file><file>images/water/0017.png</file><file>images/water/0018.png</file><file>images/water/0019.png</file><file>images/water/0020.png</file><file>images/water/0021.png</file><file>images/water/0022.png</file><file>images/water/0023.png</file><file>images/water/0024.png</file><file>images/water/0025.png</file><file>images/water/0026.png</file><file>images/water/0027.png</file><file>images/water/0028.png</file><file>images/water/0029.png</file><file>images/water/0030.png</file><file>images/water/0031.png</file><file>images/water/0032.png</file><file>images/water/0033.png</file><file>images/water/0034.png</file><file>images/water/0035.png</file><file>images/water/0036.png</file><file>images/water/0037.png</file><file>images/water/0038.png</file><file>images/water/0039.png</file>
+        <file>images/water/0000.png</file>
+        <file>images/water/0001.png</file>
+        <file>images/water/0002.png</file>
+        <file>images/water/0003.png</file>
+        <file>images/water/0004.png</file>
+        <file>images/water/0005.png</file>
+        <file>images/water/0006.png</file>
+        <file>images/water/0007.png</file>
+        <file>images/water/0008.png</file>
+        <file>images/water/0009.png</file>
+        <file>images/water/0010.png</file>
+        <file>images/water/0011.png</file>
+        <file>images/water/0012.png</file>
+        <file>images/water/0013.png</file>
+        <file>images/water/0014.png</file>
+        <file>images/water/0015.png</file>
+        <file>images/water/0016.png</file>
+        <file>images/water/0017.png</file>
+        <file>images/water/0018.png</file>
+        <file>images/water/0019.png</file>
+        <file>images/water/0020.png</file>
+        <file>images/water/0021.png</file>
+        <file>images/water/0022.png</file>
+        <file>images/water/0023.png</file>
+        <file>images/water/0024.png</file>
+        <file>images/water/0025.png</file>
+        <file>images/water/0026.png</file>
+        <file>images/water/0027.png</file>
+        <file>images/water/0028.png</file>
+        <file>images/water/0029.png</file>
+        <file>images/water/0030.png</file>
+        <file>images/water/0031.png</file>
+        <file>images/water/0032.png</file>
+        <file>images/water/0033.png</file>
+        <file>images/water/0034.png</file>
+        <file>images/water/0035.png</file>
+        <file>images/water/0036.png</file>
+        <file>images/water/0037.png</file>
+        <file>images/water/0038.png</file>
+        <file>images/water/0039.png</file>
         <file>images/wall.png</file>
         <file>images/wall_1.png</file>
         <file>images/wall_2.png</file>
@@ -94,7 +132,6 @@
         <file>images/purple_diamond.png</file>
         <file>images/elite.png</file>
         <file>images/collection.png</file>
-        <!-- Monster GIFs -->
         <file>images/monster_bomb.gif</file>
         <file>images/monster_boss_hit.gif</file>
         <file>images/monster_cool_phone.gif</file>
@@ -103,10 +140,11 @@
         <file>images/monster_terrible_phone.gif</file>
         <file>images/monster_xuanzhi.gif</file>
         <file>images/monster_zhannindeguang.gif</file>
-        <!-- Maps -->
         <file>maps/school_map.tmj</file>
         <file>maps/chamber1.tmj</file>
         <file>maps/lianda.tmj</file>
         <file>maps/Weiming_lake.tmj</file>
+        <file>maps/new_school_map.tmj</file>
+        <file>maps/ending.tmj</file>
     </qresource>
 </RCC>

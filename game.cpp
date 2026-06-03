@@ -129,7 +129,7 @@ Game::Game(QWidget *parent)
     preloadWaterFrames();
 
     // 加载初始地图（使用 start 点）
-    loadMap(":/maps/school_map.tmj", true);
+    loadMap(":/maps/new_school_map.tmj", true);
 }
 
 Game::~Game()
@@ -2166,7 +2166,7 @@ void Game::processAdminKey(int key)
     int num = key - Qt::Key_0;
     if (pendingX == 1) {
         pendingX = 0;
-        if (num == 0) { loadMap(":/maps/school_map.tmj", true); qDebug() << "Admin: → school_map spawn"; }
+        if (num == 0) { loadMap(":/maps/new_school_map.tmj", true); qDebug() << "Admin: → new_school_map spawn"; }
         else if (num == 1) { loadMap(":/maps/chamber1.tmj", true); qDebug() << "Admin: → chamber1"; }
         else if (num == 2) { loadMap(":/maps/lianda.tmj", true); qDebug() << "Admin: → lianda"; }
         else if (num == 3) { loadMap(":/maps/Weiming_lake.tmj", true); qDebug() << "Admin: → Weiming_lake"; }
