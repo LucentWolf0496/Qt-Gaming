@@ -17,6 +17,8 @@
 #include <QQueue>
 #include <QSet>
 #include <QPainter>
+#include <QMessageBox>
+#include <QApplication>
 
 namespace {
     QVector<QPixmap> g_bombFrames;
@@ -110,17 +112,21 @@ namespace {
 Game::Game(QWidget *parent)
     : QGraphicsView(parent),
       upPressed(false), downPressed(false), leftPressed(false), rightPressed(false),
-      canTeleport(true), isTeleporting(false)
+      canTeleport(true), isTeleporting(false),
+      isMainMenuActive(true), isGameMenuActive(false),
+      mainMenuStartItem(nullptr), mainMenuAboutItem(nullptr), mainMenuExitItem(nullptr),
+      gameMenuButton(nullptr),
+      gameMenuContinueItem(nullptr), gameMenuAboutItem(nullptr), gameMenuExitItem(nullptr)
 {
     scene = new QGraphicsScene(this);
     setScene(scene);
-    resize(800, 600);                      // 初始大小，可拖动缩放
+    resize(800, 600);
     setMinimumSize(400, 300);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setWindowTitle("Qt-Gaming");
 
-    // 预加载 Projectile / Bomb / FireBg / Daolang / Monster 帧缓存
+    // 预加载所有帧缓存（与原来相同）
     preloadProjectileFrames();
     loadBombFrames();
     loadFireBgFrames();
@@ -128,8 +134,176 @@ Game::Game(QWidget *parent)
     preloadMonsterFrames();
     preloadWaterFrames();
 
-    // 加载初始地图（使用 start 点）
+    // 显示主菜单（不加载地图）
+    setupEmptyScene();
+    showMainMenu();
+}
+
+void Game::setupEmptyScene()
+{
+    // 清空场景中所有项
+    QList<QGraphicsItem*> items = scene->items();
+    for (QGraphicsItem *item : items) {
+        delete item;
+    }
+    // 设置一个深色背景矩形，覆盖整个视图
+    QGraphicsRectItem *bg = new QGraphicsRectItem(0, 0, 800, 600);
+    bg->setBrush(QBrush(QColor(30, 30, 40)));
+    bg->setPen(Qt::NoPen);
+    scene->addItem(bg);
+    scene->setSceneRect(0, 0, 800, 600);
+    setSceneRect(scene->sceneRect());
+}
+
+void Game::showMainMenu()
+{
+    isMainMenuActive = true;
+
+    QFont titleFont("Arial", 32, QFont::Bold);
+    QFont itemFont("Arial", 20);
+
+    QGraphicsSimpleTextItem *title = new QGraphicsSimpleTextItem("Qt-Gaming");
+    title->setFont(titleFont);
+    title->setBrush(Qt::white);
+    title->setPos(400 - title->boundingRect().width()/2, 150);
+    scene->addItem(title);
+
+    mainMenuStartItem = new QGraphicsSimpleTextItem("开始游戏");
+    mainMenuStartItem->setFont(itemFont);
+    mainMenuStartItem->setBrush(Qt::white);
+    mainMenuStartItem->setPos(400 - mainMenuStartItem->boundingRect().width()/2, 300);
+    scene->addItem(mainMenuStartItem);
+
+    mainMenuAboutItem = new QGraphicsSimpleTextItem("关于");
+    mainMenuAboutItem->setFont(itemFont);
+    mainMenuAboutItem->setBrush(Qt::white);
+    mainMenuAboutItem->setPos(400 - mainMenuAboutItem->boundingRect().width()/2, 370);
+    scene->addItem(mainMenuAboutItem);
+
+    mainMenuExitItem = new QGraphicsSimpleTextItem("退出");
+    mainMenuExitItem->setFont(itemFont);
+    mainMenuExitItem->setBrush(Qt::white);
+    mainMenuExitItem->setPos(400 - mainMenuExitItem->boundingRect().width()/2, 440);
+    scene->addItem(mainMenuExitItem);
+}
+
+void Game::hideMainMenu()
+{
+    // 删除主菜单项（不需要逐一删除，因为后面 startGame 会 loadMap 清空场景）
+    // 但为了严谨，将指针置空即可。
+    mainMenuStartItem = nullptr;
+    mainMenuAboutItem = nullptr;
+    mainMenuExitItem = nullptr;
+    // 注意：title 未保存指针，会在 loadMap 时被清空，无影响。
+    isMainMenuActive = false;
+}
+
+void Game::startGame()
+{
+    hideMainMenu();
+    // 加载默认地图
     loadMap(":/maps/new_school_map.tmj", true);
+    // 确保定时器启动
+    if (!gameTimer) {
+        gameTimer = new QTimer(this);
+        connect(gameTimer, &QTimer::timeout, this, &Game::updateGame);
+    }
+    gameTimer->start(16);
+    // 创建右上角菜单按钮
+    createGameMenuButton();
+}
+
+void Game::quitGame()
+{
+    qApp->quit();
+}
+
+void Game::createGameMenuButton()
+{
+    if (!scene) return;
+    // 绘制 40x40 圆角矩形菜单图标
+    QPixmap pixmap(40, 40);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setBrush(QBrush(QColor(200, 200, 200, 200)));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(0, 0, 40, 40, 8, 8);
+    painter.setPen(QPen(Qt::black, 2));
+    painter.drawLine(10, 15, 30, 15);
+    painter.drawLine(10, 20, 30, 20);
+    painter.drawLine(10, 25, 30, 25);
+    painter.end();
+
+    gameMenuButton = new QGraphicsPixmapItem(pixmap);
+    gameMenuButton->setZValue(2000);
+    gameMenuButton->setAcceptHoverEvents(true);
+    scene->addItem(gameMenuButton);
+
+    // 首次更新位置
+    updateGameMenuButtonPosition();
+}
+
+void Game::updateGameMenuButtonPosition()
+{
+    if (!gameMenuButton) return;
+    // 将屏幕右上角（视口坐标）转换为场景坐标
+    QPointF scenePos = mapToScene(viewport()->width() - 50, 10);
+    gameMenuButton->setPos(scenePos);
+}
+
+void Game::showGameMenu()
+{
+    if (isGameMenuActive) return;
+    isGameMenuActive = true;
+    // 暂停游戏循环
+    if (gameTimer) gameTimer->stop();
+
+    // ========== 关键：清除所有移动按键状态，避免菜单期间积累 ==========
+    upPressed = downPressed = leftPressed = rightPressed = false;
+
+    // 获取当前视图中心点（场景坐标）
+    QRectF viewRect = mapToScene(viewport()->rect()).boundingRect();
+    qreal centerX = viewRect.center().x();
+    qreal centerY = viewRect.center().y();
+
+    QFont itemFont("Arial", 18);
+
+    gameMenuContinueItem = new QGraphicsSimpleTextItem("继续游戏");
+    gameMenuContinueItem->setFont(itemFont);
+    gameMenuContinueItem->setBrush(Qt::white);
+    gameMenuContinueItem->setPos(centerX - gameMenuContinueItem->boundingRect().width()/2, centerY - 60);
+    gameMenuContinueItem->setZValue(2001);
+    scene->addItem(gameMenuContinueItem);
+
+    gameMenuAboutItem = new QGraphicsSimpleTextItem("关于");
+    gameMenuAboutItem->setFont(itemFont);
+    gameMenuAboutItem->setBrush(Qt::white);
+    gameMenuAboutItem->setPos(centerX - gameMenuAboutItem->boundingRect().width()/2, centerY);
+    gameMenuAboutItem->setZValue(2001);
+    scene->addItem(gameMenuAboutItem);
+
+    gameMenuExitItem = new QGraphicsSimpleTextItem("退出游戏");
+    gameMenuExitItem->setFont(itemFont);
+    gameMenuExitItem->setBrush(Qt::white);
+    gameMenuExitItem->setPos(centerX - gameMenuExitItem->boundingRect().width()/2, centerY + 60);
+    gameMenuExitItem->setZValue(2001);
+    scene->addItem(gameMenuExitItem);
+}
+
+void Game::hideGameMenu()
+{
+    if (!isGameMenuActive) return;
+    isGameMenuActive = false;
+
+    delete gameMenuContinueItem; gameMenuContinueItem = nullptr;
+    delete gameMenuAboutItem;    gameMenuAboutItem = nullptr;
+    delete gameMenuExitItem;     gameMenuExitItem = nullptr;
+
+    // 再次清空，防止残留（可选）
+    upPressed = downPressed = leftPressed = rightPressed = false;
+
+    // 恢复游戏循环
+    if (gameTimer) gameTimer->start(16);
 }
 
 Game::~Game()
@@ -239,6 +413,10 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     }
 
     // ---------- 2. 清理所有现有资源 ----------
+    // 清理菜单按钮（如果存在）
+    if (gameMenuButton) {
+        gameMenuButton = nullptr; // 按钮将在场景清空时被删除，只需置空指针
+    }
     // 清理旧地图
     if (tileMap) {
         delete tileMap;
@@ -899,6 +1077,11 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     // 生成钻石
     spawnDiamonds();
 
+    // 如果不是主菜单状态（即游戏进行中），创建右上角菜单按钮
+    if (!isMainMenuActive) {
+        createGameMenuButton();
+    }
+
     // ---------- 11. 重新启动游戏循环 ----------
     if (!gameTimer) {
         gameTimer = new QTimer(this);
@@ -913,6 +1096,17 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
 
 void Game::keyPressEvent(QKeyEvent *event)
 {
+    // 菜单激活时，只处理 ESC 关闭游戏内菜单
+    if (isMainMenuActive) {
+        // 主菜单时不处理任何游戏键，也不退出（避免误操作）
+        return;
+    }
+    if (isGameMenuActive) {
+        if (event->key() == Qt::Key_Escape) {
+            hideGameMenu();
+        }
+        return;
+    }
     // ========== 管理员模式：czz 切换 ==========
     int key = event->key();
     if (!adminMode) {
@@ -990,6 +1184,7 @@ void Game::keyPressEvent(QKeyEvent *event)
 
 void Game::keyReleaseEvent(QKeyEvent *event)
 {
+    if (isMainMenuActive || isGameMenuActive) return;
     switch (event->key()) {
     case Qt::Key_W: upPressed = false; break;
     case Qt::Key_S: downPressed = false; break;
@@ -1000,8 +1195,61 @@ void Game::keyReleaseEvent(QKeyEvent *event)
     }
 }
 
+void Game::mousePressEvent(QMouseEvent *event)
+{
+    QPointF scenePos = mapToScene(event->pos());
+
+    // ========== 主菜单点击 ==========
+    if (isMainMenuActive) {
+        if (mainMenuStartItem && mainMenuStartItem->contains(mainMenuStartItem->mapFromScene(scenePos))) {
+            startGame();
+        } else if (mainMenuAboutItem && mainMenuAboutItem->contains(mainMenuAboutItem->mapFromScene(scenePos))) {
+            QMessageBox::information(this, "关于", "Qt-Gaming 演示游戏\n版本 2.0\n\n组队作业项目");
+        } else if (mainMenuExitItem && mainMenuExitItem->contains(mainMenuExitItem->mapFromScene(scenePos))) {
+            quitGame();
+        }
+        return;
+    }
+
+    // ========== 游戏内菜单点击 ==========
+    if (isGameMenuActive) {
+        if (gameMenuContinueItem && gameMenuContinueItem->contains(gameMenuContinueItem->mapFromScene(scenePos))) {
+            hideGameMenu();
+        } else if (gameMenuAboutItem && gameMenuAboutItem->contains(gameMenuAboutItem->mapFromScene(scenePos))) {
+            QMessageBox::information(this, "关于", "Qt-Gaming 演示游戏\n版本 2.0\n\n组队作业项目");
+        } else if (gameMenuExitItem && gameMenuExitItem->contains(gameMenuExitItem->mapFromScene(scenePos))) {
+            quitGame();
+        }
+        return;
+    }
+
+    // ========== 点击右上角菜单按钮（仅游戏进行中） ==========
+    if (gameMenuButton && gameMenuButton->contains(gameMenuButton->mapFromScene(scenePos))) {
+        // 传送门附近禁止打开菜单
+        if (isNearPortal()) {
+            // 显示短暂提示
+            QGraphicsSimpleTextItem *tip = new QGraphicsSimpleTextItem("传送门附近无法打开菜单");
+            tip->setBrush(Qt::yellow);
+            tip->setPos(scenePos.x() - 80, scenePos.y() - 30);
+            tip->setZValue(10000);
+            scene->addItem(tip);
+            QTimer::singleShot(1000, [tip]() {
+                if (tip && tip->scene()) tip->scene()->removeItem(tip);
+                delete tip;
+            });
+            return;
+        }
+        showGameMenu();
+        return;
+    }
+
+    // 其他点击事件（例如游戏中点击地面等），交给基类处理（可选）
+    QGraphicsView::mousePressEvent(event);
+}
+
 void Game::updateGame()
 {
+    if (isMainMenuActive || isGameMenuActive) return; // 菜单激活时，不更新游戏逻辑
     // 变身动画期间暂停游戏
     if (gamePaused) return;
     // 地图切换期间玩家/地图可能为空
@@ -1147,6 +1395,7 @@ void Game::updateGame()
     updateMinimap();            // ← 更新小地图红点位置
     updateDiamonds();           // ← 钻石动画与碰撞
     updatePetals();             // ← 梅花瓣粒子
+    updateGameMenuButtonPosition();
     // 紫钻 buff：更新头顶十字位置，到期移除
     if (attackBuffTimer > 0) {
         attackBuffTimer--;
@@ -1725,6 +1974,13 @@ void Game::applyZoom()
     if (player) {
         centerOn(player);
     }
+    updateGameMenuButtonPosition();  // 缩放后重新计算位置
+}
+
+void Game::resizeEvent(QResizeEvent *event)
+{
+    QGraphicsView::resizeEvent(event);
+    updateGameMenuButtonPosition();
 }
 
 void Game::createHud()

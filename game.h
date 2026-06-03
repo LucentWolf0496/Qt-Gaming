@@ -31,6 +31,8 @@ public:
 
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     void loadMap(const QString &mapFilePath, bool useStartPoint = true);
 
     /** 敌人注册的炮弹加入游戏管理列表 */
@@ -259,6 +261,31 @@ private:
     QGraphicsEllipseItem *minimapDot = nullptr;
     void createMinimap();
     void updateMinimap();
+
+    // ========== 菜单系统 ==========
+    bool isMainMenuActive;          // 主菜单是否显示
+    bool isGameMenuActive;          // 游戏内菜单是否显示
+
+    QGraphicsSimpleTextItem *mainMenuStartItem;
+    QGraphicsSimpleTextItem *mainMenuAboutItem;
+    QGraphicsSimpleTextItem *mainMenuExitItem;
+
+    QGraphicsPixmapItem *gameMenuButton;               // 右上角菜单按钮
+    QGraphicsSimpleTextItem *gameMenuContinueItem;    // 游戏内菜单：继续
+    QGraphicsSimpleTextItem *gameMenuAboutItem;       // 游戏内菜单：关于
+    QGraphicsSimpleTextItem *gameMenuExitItem;        // 游戏内菜单：退出
+
+    void setupEmptyScene();          // 清空场景并设置纯色背景（用于主菜单）
+    void showMainMenu();             // 显示主菜单
+    void hideMainMenu();             // 隐藏主菜单
+    void startGame();                // 开始新游戏（加载地图）
+    void quitGame();                 // 退出程序
+
+    void createGameMenuButton();     // 在游戏场景右上角创建菜单按钮
+    void showGameMenu();             // 显示游戏内菜单（并暂停游戏）
+    void hideGameMenu();             // 隐藏游戏内菜单（恢复游戏）
+
+    void updateGameMenuButtonPosition();  // 更新按钮位置跟随屏幕右上角
 };
 
 #endif // GAME_H
