@@ -6,10 +6,15 @@
 #include <QGraphicsRectItem>
 #include <QObject>
 #include <QPointF>
+#include <QVector>
+#include <QPixmap>
 
 class QGraphicsScene;
 class TileMap;
 class Game;
+
+/** 预加载所有 monster GIF 的帧缓存（在 Game 构造函数中调用一次） */
+void preloadMonsterFrames();
 
 /**
  * @brief EnemyProjectile 怪物炮弹类
@@ -89,9 +94,14 @@ private:
     QGraphicsRectItem *hpBarBg = nullptr;  // 血条背景（灰色）
     QGraphicsRectItem *hpBarFg = nullptr;  // 血条前景（红色）
 
+    int monsterType = -1;                  // 选中的 monster 索引（-1 = 回退到 minion）
+    int animFrame = 0;                     // 当前动画帧序号
+    int animTick = 0;                      // 帧切换计时器
+
     void randomizeDirection(); // 随机化移动方向
     void tryAttack();            // 尝试发动攻击
     void updateHpBar();          // 更新血条显示
+    void updateMonsterFrame();   // 更新怪兽帧动画
 };
 
 #endif // ENEMY_H

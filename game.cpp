@@ -6,14 +6,17 @@
 #include <QDebug>
 #include <QGraphicsRectItem>
 #include <QFile>
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFileInfo>
+#include <QTextStream>
 #include <QtMath>  // qSqrt
 #include <QImageReader>
 #include <QQueue>
 #include <QSet>
+#include <QPainter>
 
 namespace {
     QVector<QPixmap> g_bombFrames;
@@ -24,6 +27,23 @@ namespace {
 
 QVector<QPixmap> g_daolangFrames;
 bool g_daolangLoaded = false;
+
+// 动态水帧缓存
+static QVector<QPixmap> g_waterFrames;
+static bool g_waterLoaded = false;
+
+static void preloadWaterFrames() {
+    if (g_waterLoaded) return;
+    g_waterLoaded = true;
+    for (int i = 0; i < 40; i++) {
+        QString path = QString(":/images/water/%1.png").arg(i, 4, 10, QChar('0'));
+        QPixmap pm(path);
+        if (!pm.isNull()) {
+            g_waterFrames.append(pm.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    }
+    qDebug() << "preloadWaterFrames: loaded" << g_waterFrames.size() << "frames";
+}
 
 namespace {
 
@@ -94,15 +114,19 @@ Game::Game(QWidget *parent)
 {
     scene = new QGraphicsScene(this);
     setScene(scene);
-    setFixedSize(800, 600);
+    resize(800, 600);                      // 初始大小，可拖动缩放
+    setMinimumSize(400, 300);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setWindowTitle("Qt-Gaming");
 
-    // 预加载 Projectile / Bomb / FireBg / Daolang 帧缓存，避免首次释放技能时卡顿
+    // 预加载 Projectile / Bomb / FireBg / Daolang / Monster 帧缓存
     preloadProjectileFrames();
     loadBombFrames();
     loadFireBgFrames();
     loadDaolangFrames();
+    preloadMonsterFrames();
+    preloadWaterFrames();
 
     // 加载初始地图（使用 start 点）
     loadMap(":/maps/school_map.tmj", true);
@@ -191,6 +215,14 @@ Game::~Game()
     if (hudText) { delete hudText; hudText = nullptr; }
     if (hudLevelText) { delete hudLevelText; hudLevelText = nullptr; }
     if (hudKeyText) delete hudKeyText;
+    if (minimapItem) { delete minimapItem; minimapItem = nullptr; }
+    if (minimapDot)  { delete minimapDot;  minimapDot  = nullptr; }
+    for (auto &d : diamonds) { delete d.item; }
+    diamonds.clear();
+    for (auto *s : portalSprites) { delete s; }
+    portalSprites.clear();
+    if (buffIndicator) { delete buffIndicator; buffIndicator = nullptr; }
+    if (bgOverlay) { delete bgOverlay; bgOverlay = nullptr; }
 
     delete tileMap;
     delete player;
@@ -213,11 +245,27 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
         tileMap = nullptr;
         qDebug() << "[loadMap] Old tileMap deleted.";
     }
+    // ---------- 保存跨地图状态 ----------
+    int savedLevel = 1, savedExp = 0, savedMaxExp = 100;
+    int savedHp = 100, savedMaxHp = 100, savedMp = 100, savedMaxMp = 100;
+    bool savedEnhanced = false;
+    bool hasSavedState = false;
+
     if (player) {
+        savedLevel = player->getLevel();
+        savedExp = player->getExp();
+        savedMaxExp = player->getMaxExp();
+        savedHp = player->getHp();
+        savedMaxHp = player->getMaxHp();
+        savedMp = player->getMp();
+        savedMaxMp = player->getMaxMp();
+        savedEnhanced = player->getEnhanced();
+        hasSavedState = true;
+
         if (player->scene()) scene->removeItem(player);
         delete player;
         player = nullptr;
-        qDebug() << "[loadMap] Old player deleted.";
+        qDebug() << "[loadMap] Old player deleted (state saved: Lv." << savedLevel << ")";
     }
 
     // 清理所有流星粒子
@@ -264,6 +312,23 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
         qDebug() << "[loadMap] Old pet deleted.";
     }
 
+    // 清理变身动画（跨地图时如果还在播，必须停掉）
+    if (transformMovie) {
+        transformMovie->stop();
+        delete transformMovie;
+        transformMovie = nullptr;
+    }
+    if (transformItem) {
+        if (transformItem->scene()) transformItem->scene()->removeItem(transformItem);
+        delete transformItem;
+        transformItem = nullptr;
+    }
+    gamePaused = false;  // 解除变身动画的暂停状态
+    stunTimer = 0;       // 清除定身状态
+    animatedWaterTiles.clear();
+    for (auto &p : petals) { if (p.item) delete p.item; }
+    petals.clear();
+
     // 清理背后火焰
     if (fireBgItem) {
         delete fireBgItem;
@@ -282,6 +347,15 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     if (hudText) { delete hudText; hudText = nullptr; }
     if (hudLevelText) { delete hudLevelText; hudLevelText = nullptr; }
     if (hudKeyText) { delete hudKeyText; hudKeyText = nullptr; }
+    if (minimapItem) { delete minimapItem; minimapItem = nullptr; }
+    if (minimapDot)  { delete minimapDot;  minimapDot  = nullptr; }
+    for (auto &d : diamonds) { delete d.item; }
+    diamonds.clear();
+    attackBuffTimer = 0;
+    for (auto *s : portalSprites) { delete s; }
+    portalSprites.clear();
+    if (buffIndicator) { delete buffIndicator; buffIndicator = nullptr; }
+    if (bgOverlay) { delete bgOverlay; bgOverlay = nullptr; }
 
     // 清空可攻击对象列表
     hittableItems.clear();
@@ -377,6 +451,8 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                             int rawGid = dataArr[y * mapWidth + x].toInt();
                             int cleanGid = rawGid & 0x1FFFFFFF;
                             if (cleanGid == 0) continue;
+                            // 只取 30%，减少地图固定怪物密度
+                            if (QRandomGenerator::global()->bounded(100) >= 30) continue;
                             Enemy *enemy = new Enemy(tileMap, scene,
                                                      QPointF(x * tileWidth, y * tileHeight),
                                                      this);
@@ -391,20 +467,48 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
 
                 // ========== 处理 water 图层（阻挡玩家，不阻挡子弹）==========
                 if (layerName == "water") {
-                    QVector<Tile*> waterTiles;   // 临时数组
+                    QVector<Tile*> waterTiles;
                     int waterCount = 0;
                     for (int y = 0; y < mapHeight; ++y) {
                         for (int x = 0; x < mapWidth; ++x) {
                             int rawGid = dataArr[y * mapWidth + x].toInt();
                             int cleanGid = rawGid & 0x1FFFFFFF;
                             if (cleanGid == 0) continue;
-                            Tile *waterTile = new Tile(layerImageMap["water"], x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+
+                            // 随机选择水图片
+                            QString waterPath;
+                            bool isWeimingLake = mapFilePath.contains("Weiming_lake");
+                            if (isWeimingLake) {
+                                // Weiming_lake：三种水随机（60% / 35% / 5%）
+                                int r = QRandomGenerator::global()->bounded(100);
+                                if (r < 60) {
+                                    waterPath = ":/images/water_d_1.png";
+                                } else if (r < 95) {
+                                    waterPath = ":/images/water_d_2.png";
+                                } else {
+                                    waterPath = ":/images/water_d_3.png";
+                                }
+                            } else {
+                                // 其他地图：两种水随机（30% / 70%）
+                                int r = QRandomGenerator::global()->bounded(100);
+                                if (r < 30) {
+                                    waterPath = ":/images/water_1.png";
+                                } else {
+                                    waterPath = ":/images/water_2.png";
+                                }
+                            }
+
+                            Tile *waterTile = new Tile(waterPath, x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+                            waterTile->setZValue(-3);
                             scene->addItem(waterTile);
-                            waterTiles.append(waterTile);   // 先收集，不调用 addWaterTile
+                            waterTiles.append(waterTile);
+                            // Weiming_lake 的水用动态帧
+                            if (isWeimingLake && !g_waterFrames.isEmpty()) {
+                                animatedWaterTiles.append(waterTile);
+                            }
                             waterCount++;
                         }
                     }
-                    // 批量添加到 tileMap，一次性重建网格
                     if (!waterTiles.isEmpty()) {
                         tileMap->addWaterTiles(waterTiles);
                     }
@@ -420,16 +524,21 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                             int rawGid = dataArr[y * mapWidth + x].toInt();
                             int cleanGid = rawGid & 0x1FFFFFFF;
                             if (cleanGid == 0) continue;
-                            // 记录火焰区域的矩形（用于每帧检测）
+
                             fireRects.append(QRectF(x * tileWidth, y * tileHeight, tileWidth, tileHeight));
-                            // 同时创建视觉效果（显示火焰图片）
-                            Tile *fireTile = new Tile(layerImageMap["fireland"], x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+
+                            // 随机选择火焰图片（fireland_1 / fireland_2 / fireland_3）
+                            int r = QRandomGenerator::global()->bounded(3);
+                            QString firePath = QString(":/images/fireland_%1.png").arg(r + 1);
+
+                            Tile *fireTile = new Tile(firePath, x * tileWidth, y * tileHeight, QSize(tileWidth, tileHeight));
+                            fireTile->setZValue(-4);  // 火焰与草地同层
                             scene->addItem(fireTile);
                             fireCount++;
                         }
                     }
                     qDebug() << "[ManualDraw] Fireland layer created" << fireCount << "tiles";
-                    continue;  // 跳过普通瓦片创建
+                    continue;
                 }
 
                 // ========== 普通瓦片图层（包括 floor, wall 和所有装饰）==========
@@ -443,34 +552,147 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                         QString finalPath;
                         QSize fixedSize(tileWidth, tileHeight);
 
-                        // 地板随机纹理
+                        // 地板随机纹理（按地图区分）
                         if (layerName == "floor") {
-                            finalPath = (QRandomGenerator::global()->bounded(2) == 0)
-                                        ? ":/images/floor_dark.png" : ":/images/floor_light.png";
+                            if (mapFilePath.contains("school_map")) {
+                                finalPath = ":/images/floor_room_1.png";
+                            } else {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/floor_wood_1.png" : ":/images/floor_wood_2.png";
+                            }
                         }
-                        // 墙壁随机纹理
+                        else if (layerName == "floor_onfire") {
+                            if (mapFilePath.contains("Weiming_lake")) {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/floor_road_f_1.png" : ":/images/floor_road_f_2.png";
+                            } else {
+                                finalPath = ":/images/floor_road_f_1.png";
+                            }
+                        }
+                        else if (layerName == "floor_road") {
+                            if (mapFilePath.contains("Weiming_lake")) {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/floor_road_d_1.png" : ":/images/floor_road_d_2.png";
+                            } else if (mapFilePath.contains("chamber1")) {
+                                finalPath = ":/images/floor_road_3.png";
+                            } else {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/floor_road_1.png" : ":/images/floor_road_2.png";
+                            }
+                        }
+                        else if (layerName == "floor_room") {
+                            if (mapFilePath.contains("Weiming_lake")) {
+                                int r = QRandomGenerator::global()->bounded(100);
+                                finalPath = (r < 90) ? ":/images/floor_room_d_1.png"
+                                                      : ":/images/floor_room_d_2.png";
+                            } else if (mapFilePath.contains("chamber1")) {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/floor_wood_3.png" : ":/images/floor_wood_4.png";
+                            } else {
+                                finalPath = ":/images/floor_room_1.png";
+                            }
+                        }
+                        // 墙壁随机纹理（按地图区分 + 下方检测）
                         else if (layerName == "wall") {
-                            int r = QRandomGenerator::global()->bounded(3);
-                            finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                            bool hasWallBelow = false;
+                            if (y + 1 < mapHeight) {
+                                int belowRawGid = dataArr[(y + 1) * mapWidth + x].toInt();
+                                int belowCleanGid = belowRawGid & 0x1FFFFFFF;
+                                hasWallBelow = (belowCleanGid != 0);
+                            }
+                            bool isSchoolMap = mapFilePath.contains("school_map");
+                            bool isChamber1 = mapFilePath.contains("chamber1");
+                            if (!hasWallBelow) {
+                                if (isSchoolMap) {
+                                    finalPath = ":/images/wall_w_down.png";
+                                } else if (isChamber1) {
+                                    finalPath = ":/images/wall_r_down.png";
+                                } else {
+                                    finalPath = ":/images/wall_down.png";
+                                }
+                            } else {
+                                if (isSchoolMap) {
+                                    int r = QRandomGenerator::global()->bounded(2);
+                                    finalPath = QString(":/images/wall_w_%1.png").arg(r + 1);
+                                } else if (isChamber1) {
+                                    int r = QRandomGenerator::global()->bounded(3);
+                                    finalPath = QString(":/images/wall_r_%1.png").arg(r + 1);
+                                } else {
+                                    int r = QRandomGenerator::global()->bounded(3);
+                                    finalPath = QString(":/images/wall_%1.png").arg(r + 1);
+                                }
+                            }
+                        }
+                        else if (layerName == "stair_h") {
+                            finalPath = ":/images/stair_h.png";
+                        }
+                        else if (layerName == "stair_c1") {
+                            finalPath = ":/images/stair_c1.png";
+                        }
+                        else if (layerName == "stair_c2") {
+                            finalPath = ":/images/stair_c2.png";
+                        }
+                        else if (layerName == "grass" || layerName == "grassland") {
+                            if (mapFilePath.contains("Weiming_lake")) {
+                                int r = QRandomGenerator::global()->bounded(2);
+                                finalPath = (r == 0) ? ":/images/grass_d_1.png" : ":/images/grass_d_2.png";
+                            } else {
+                                int r = QRandomGenerator::global()->bounded(100);
+                                if (r < 85) {
+                                    finalPath = ":/images/grass_1.png";
+                                } else if (r < 92) {
+                                    finalPath = ":/images/grass_2.png";
+                                } else {
+                                    finalPath = ":/images/grass_3.png";
+                                }
+                            }
                         }
                         // 宝箱图层：加入 chests 列表
                         else if (layerName == "chest") {
                             finalPath = layerImageMap.value("chest", ":/images/chest.png");
                             Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
                             scene->addItem(tile);
-                            chests.append(tile);       // 存入宝箱列表
+                            chests.append(tile);
                             tileCount++;
-                            continue;                  // 跳过后面的通用创建
+                            continue;
                         }
-                        // 门图层：加入 doors 列表，并添加碰撞
+                        // 门图层：方向检测 + 加入 doors 列表 + 碰撞
                         else if (layerName == "door") {
-                            finalPath = layerImageMap.value("door", ":/images/door.png");
+                            bool hasLeftDoor = false, hasRightDoor = false, hasUpDoor = false, hasDownDoor = false;
+                            if (x > 0) {
+                                int leftGid = dataArr[y * mapWidth + (x - 1)].toInt() & 0x1FFFFFFF;
+                                hasLeftDoor = (leftGid != 0);
+                            }
+                            if (x + 1 < mapWidth) {
+                                int rightGid = dataArr[y * mapWidth + (x + 1)].toInt() & 0x1FFFFFFF;
+                                hasRightDoor = (rightGid != 0);
+                            }
+                            if (y > 0) {
+                                int upGid = dataArr[(y - 1) * mapWidth + x].toInt() & 0x1FFFFFFF;
+                                hasUpDoor = (upGid != 0);
+                            }
+                            if (y + 1 < mapHeight) {
+                                int downGid = dataArr[(y + 1) * mapWidth + x].toInt() & 0x1FFFFFFF;
+                                hasDownDoor = (downGid != 0);
+                            }
+                            if (hasLeftDoor || hasRightDoor) {
+                                finalPath = ":/images/door_h.png";
+                            } else if (hasUpDoor || hasDownDoor) {
+                                finalPath = ":/images/door_c.png";
+                            } else {
+                                finalPath = ":/images/door_h.png";
+                            }
                             Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
                             scene->addItem(tile);
-                            doors.append(tile);        // 存入门列表
-                            tileMap->addWallTile(tile); // 门具有碰撞体积
+                            doors.append(tile);
+                            tileMap->addWallTile(tile);
                             tileCount++;
-                            continue;                  // 跳过后面的通用创建
+                            continue;
+                        }
+                        // 传送门图层：跳过（用 objectgroup rect 的漩涡替代）
+                        else if (layerName == "portal" || layerName == "portal_image") {
+                            tileCount++;
+                            continue;
                         }
                         // 其他图层：从映射表获取或使用默认图片
                         else {
@@ -482,6 +704,19 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                         }
 
                         Tile *tile = new Tile(finalPath, x * tileWidth, y * tileHeight, fixedSize);
+
+                        // ========== 渲染层级（Z值，全部负数，确保游戏对象默认 Z=0 在地形之上）==========
+                        // 草(-4) → 水(-3) → 路(-2) → 墙(-1) → 装饰(0)
+                        if (layerName == "grass" || layerName == "grassland") {
+                            tile->setZValue(-4);
+                        } else if (layerName == "floor" || layerName == "floor_road" || layerName == "floor_room" || layerName == "floor_onfire") {
+                            tile->setZValue(-2);
+                        } else if (layerName == "wall" || layerName == "door" || layerName == "stair_h" || layerName == "stair_c1" || layerName == "stair_c2") {
+                            tile->setZValue(-1);
+                        } else {
+                            tile->setZValue(0);
+                        }
+
                         scene->addItem(tile);
                         tileCount++;
 
@@ -498,6 +733,22 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                 }
                 qDebug() << "[ManualDraw] Layer" << layerName << "drew" << tileCount << "tiles";
             }
+
+            // ===== 传送门替换：用 objectgroup 的 rect 创建旋转 shikongxuanwo.png =====
+            for (const Portal &p : tileMap->getPortals()) {
+                int size = qMax((int)p.rect.width(), (int)p.rect.height());
+                auto *sprite = new QGraphicsPixmapItem();
+                QPixmap pm(":/images/shikongxuanwo.png");
+                pm = pm.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                sprite->setPixmap(pm);
+                sprite->setTransformOriginPoint(size/2.0, size/2.0);
+                sprite->setPos(p.rect.x(), p.rect.y());
+                sprite->setZValue(4);
+                sprite->setTransformationMode(Qt::SmoothTransformation);
+                scene->addItem(sprite);
+                portalSprites.append(sprite);
+            }
+            qDebug() << "[Portal] Created" << portalSprites.size() << "rotating portal sprites from objectgroup";
         } else {
             qDebug() << "[ManualDraw] Failed to parse JSON for manual drawing:" << mapFilePath;
         }
@@ -506,14 +757,54 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
         qDebug() << "[ManualDraw] Cannot open map file for manual drawing:" << mapFilePath;
     }
 
+    // ---------- 3.5 主地图背景叠加（school_map 专用）----------
+    if (mapFilePath.contains("school_map")) {
+        QPixmap left(":/images/try_background_left.png");
+        QPixmap right(":/images/try_background_right.png");
+        if (!left.isNull() && !right.isNull()) {
+            int totalW = left.width() + right.width();
+            int totalH = qMax(left.height(), right.height());
+            QPixmap stitched(totalW, totalH);
+            stitched.fill(Qt::transparent);
+            QPainter p(&stitched);
+            p.drawPixmap(0, 0, left);
+            p.drawPixmap(left.width(), 0, right);
+            p.end();
+
+            int mapW = tileMap->getMapWidth() * tileMap->getTileWidth();
+            int mapH = tileMap->getMapHeight() * tileMap->getTileHeight();
+            QPixmap scaled = stitched.scaled(mapW, mapH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+            bgOverlay = new QGraphicsPixmapItem();
+            bgOverlay->setPixmap(scaled);
+            bgOverlay->setZValue(-0.5);  // 在地板(-2)/墙(-1)之上，装饰(0)之下
+            bgOverlay->setTransformationMode(Qt::SmoothTransformation);
+            bgOverlay->setCacheMode(QGraphicsItem::DeviceCoordinateCache);  // 缩放时重新渲染保持清晰
+            scene->addItem(bgOverlay);
+            qDebug() << "[loadMap] Background overlay created:" << mapW << "x" << mapH;
+        }
+    }
+
     // ---------- 4. 创建玩家 ----------
     player = new Player(tileMap);
     scene->addItem(player);
     connect(player, &Player::died, this, &Game::onPlayerDied);   // 连接死亡信号
+
+    // 跨地图：恢复玩家等级/HP/MP/形态
+    if (hasSavedState) {
+        player->restoreState(savedLevel, savedExp, savedMaxExp,
+                             savedHp, savedMaxHp, savedMp, savedMaxMp,
+                             savedEnhanced);
+        // 恢复已解锁的被动效果
+        if (savedLevel >= 5) {
+            explosionsEnabled = true;
+        }
+    }
+
     qDebug() << "[loadMap] Player created.";
 
-    // ---------- 5. 创建背后火焰（如果已解锁）----------
-    if (!fireBgItem && !g_fireBgFrames.isEmpty()) {
+    // ---------- 5. 创建背后火焰（2级+才显示）----------
+    if (!fireBgItem && !g_fireBgFrames.isEmpty() && player && player->getLevel() >= 2) {
         fireBgItem = new QGraphicsPixmapItem();
         scene->addItem(fireBgItem);
         fireBgItem->setTransformationMode(Qt::SmoothTransformation);
@@ -529,12 +820,34 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     if (player) pet->stackBefore(player);
     qDebug() << "[loadMap] Pet created at position:" << pet->pos();
 
-    // ---------- 7. 创建巢穴（基于玩家出生点）----------
+    // ---------- 7. 创建巢穴（基于玩家出生点 + 边界检查）----------
     QPointF spawnBase = playerStart;
     if (spawnBase.isNull()) spawnBase = QPointF(100, 100);
-    spawners.append(new Spawner(tileMap, scene, spawnBase + QPointF(300, 100), this));
-    spawners.append(new Spawner(tileMap, scene, spawnBase + QPointF(-100, 300), this));
-    spawners.append(new Spawner(tileMap, scene, spawnBase + QPointF(-200, -100), this));
+    int ts = tileMap->getTileWidth();
+    int mapW = tileMap->getMapWidth() * ts;
+    int mapH = tileMap->getMapHeight() * ts;
+
+    // 安全放置函数：夹在可行走区域内
+    auto safeSpawn = [&](QPointF pos) -> QPointF {
+        pos.setX(qBound(ts * 2.0, pos.x(), mapW - ts * 3.0));
+        pos.setY(qBound(ts * 2.0, pos.y(), mapH - ts * 3.0));
+        // 尝试偏移直到不撞墙/水
+        for (int dy = -3; dy <= 3; dy++) {
+            for (int dx = -3; dx <= 3; dx++) {
+                QPointF test(pos.x() + dx * ts, pos.y() + dy * ts);
+                QRectF tr(test.x(), test.y(), 40, 40);
+                if (!tileMap->collidesWithWall(tr) && !tileMap->collidesWithWater(tr))
+                    return test;
+            }
+        }
+        return pos;  // 实在找不到就返回夹紧位置
+    };
+
+    QPointF offsets[] = {{476, 100}, {76, 300}};
+    for (auto &off : offsets) {
+        QPointF sp = safeSpawn(spawnBase + QPointF(off.x(), off.y()));
+        spawners.append(new Spawner(tileMap, scene, sp, this));
+    }
     qDebug() << "[loadMap] 3 spawners created.";
 
     // ---------- 8. 连接玩家升级信号 ----------
@@ -547,6 +860,9 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
             startPos = QPointF(100, 100);
         }
         player->setPos(startPos);
+        QTimer::singleShot(100, this, [this]() {
+            if (player) spawnArrivalEffect(player->sceneBoundingRect().center());
+        });
         qDebug() << "[loadMap] Player placed at start point:" << startPos;
     } else {
         // 临时置零，稍后由跨地图传送逻辑覆盖位置
@@ -577,6 +893,12 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
     createHud();
     qDebug() << "[loadMap] HUD created.";
 
+    // 创建小地图
+    QTimer::singleShot(100, this, [this]() { createMinimap(); });
+
+    // 生成钻石
+    spawnDiamonds();
+
     // ---------- 11. 重新启动游戏循环 ----------
     if (!gameTimer) {
         gameTimer = new QTimer(this);
@@ -591,17 +913,60 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
 
 void Game::keyPressEvent(QKeyEvent *event)
 {
+    // ========== 管理员模式：czz 切换 ==========
+    int key = event->key();
+    if (!adminMode) {
+        // 收集 czz 序列
+        if (key >= Qt::Key_A && key <= Qt::Key_Z) {
+            keyBuffer += QChar(key).toLower();
+            if (keyBuffer.size() > 20) keyBuffer = keyBuffer.right(20);
+            if (keyBuffer.endsWith("czz")) {
+                adminMode = true;
+                keyBuffer.clear();
+                qDebug() << "=== ADMIN MODE ON ===";
+                return;
+            }
+        }
+    } else {
+        // 管理员模式下处理命令
+        if (key >= Qt::Key_0 && key <= Qt::Key_9) {
+            processAdminKey(key);
+            return;
+        }
+        if (key == Qt::Key_X) {
+            processAdminKey(key);
+            return;
+        }
+        if (key >= Qt::Key_A && key <= Qt::Key_Z) {
+            keyBuffer += QChar(key).toLower();
+            if (keyBuffer.endsWith("czz")) {
+                adminMode = false;
+                keyBuffer.clear();
+                qDebug() << "=== ADMIN MODE OFF ===";
+                return;
+            }
+        }
+    }
+
     switch (event->key()) {
     case Qt::Key_W: upPressed = true; break;
     case Qt::Key_S: downPressed = true; break;
     case Qt::Key_A: leftPressed = true; break;
     case Qt::Key_D: rightPressed = true; break;
-    case Qt::Key_I: skillMeteorBurst(); break;   // ← I键：天火燎原技能（一技能，静止时才能使用）
-    case Qt::Key_H: skillTriangleShot(); break;  // ← H键：单方向破空梭（朝移动方向）
-    case Qt::Key_N: skillBlueBurst(); break;     // ← N键：普攻2（蓝色八方向月牙，可边移动边发射）
-    case Qt::Key_J: skillNormalAttack(); break;  // ← J键：普攻（九重炎杀）
-    case Qt::Key_K: skillFlashBlade(); break;    // ← K键：瞬影浪斩技能（二技能）
-    case Qt::Key_L: skillShieldActivate(); break;// ← L键：激活玄武盾（三技能）
+    case Qt::Key_I: if (!isNearPortal()) skillMeteorBurst(); break;
+    case Qt::Key_H: if (!isNearPortal()) skillTriangleShot(); break;
+    case Qt::Key_N: if (!isNearPortal()) skillBlueBurst(); break;
+    case Qt::Key_J: if (!isNearPortal()) skillNormalAttack(); break;
+    case Qt::Key_K: if (!isNearPortal()) skillFlashBlade(); break;
+    case Qt::Key_L: if (!isNearPortal()) skillShieldActivate(); break;
+    case Qt::Key_O:
+        if (speedCooldownTimer > 0 || speedBoostTimer > 0) break;
+        if (!player) break;
+        player->setSpeed(8.0);
+        speedBoostTimer = SPEED_BOOST_DURATION;
+        speedCooldownTimer = SPEED_COOLDOWN + SPEED_BOOST_DURATION;
+        qDebug() << "Speed boost ON for 5s";
+        break;
     case Qt::Key_Plus:
     case Qt::Key_Equal:  // 兼容主键盘 =/+ 键
         zoomLevel *= ZOOM_STEP;
@@ -612,6 +977,12 @@ void Game::keyPressEvent(QKeyEvent *event)
         zoomLevel /= ZOOM_STEP;
         if (zoomLevel < MIN_ZOOM) zoomLevel = MIN_ZOOM;
         applyZoom();
+        break;
+    case Qt::Key_F11:
+        if (isFullScreen())
+            showNormal();
+        else
+            showFullScreen();
         break;
     default: QGraphicsView::keyPressEvent(event);
     }
@@ -633,6 +1004,34 @@ void Game::updateGame()
 {
     // 变身动画期间暂停游戏
     if (gamePaused) return;
+    // 地图切换期间玩家/地图可能为空
+    if (!player || !tileMap || !scene) return;
+
+    // ========== 受伤定身倒计时 ==========
+    if (stunTimer > 0) stunTimer--;
+
+    // ========== 加速技能冷却 ==========
+    if (speedBoostTimer > 0) {
+        speedBoostTimer--;
+        if (speedBoostTimer == 0 && player) player->setSpeed(4.0);  // 恢复原速
+    }
+    if (speedCooldownTimer > 0) speedCooldownTimer--;
+
+    // ========== 动态水帧切换 ==========
+    if (!animatedWaterTiles.isEmpty() && !g_waterFrames.isEmpty()) {
+        waterFrameTick++;
+        if (waterFrameTick >= 3) {
+            waterFrameTick = 0;
+            waterFrameIdx = (waterFrameIdx + 1) % g_waterFrames.size();
+            const QPixmap &wf = g_waterFrames[waterFrameIdx];
+            for (Tile *t : animatedWaterTiles) {
+                qreal sx = 32.0 / wf.width();
+                qreal sy = 32.0 / wf.height();
+                t->setTransform(QTransform::fromScale(sx, sy));
+                t->setPixmap(wf);
+            }
+        }
+    }
 
     // ========== 闪现动画（优先处理）==========
     if (flashState.active && player) {
@@ -654,7 +1053,7 @@ void Game::updateGame()
 
             // 射出刀浪
             qreal bladeSpeed = 12.0;
-            int damage = 40;
+            int damage = getBuffedDamage(40);
             QPointF bladeStart = player->sceneBoundingRect().center()
                                  + QPointF(flashState.bladeDir.x() * 20.0, flashState.bladeDir.y() * 20.0);
             QPointF bladeVelocity(flashState.bladeDir.x() * bladeSpeed, flashState.bladeDir.y() * bladeSpeed);
@@ -680,8 +1079,13 @@ void Game::updateGame()
 
     // 正常移动
     else if (player) {
-        QPointF oldPos = player->pos();                    // 记录移动前位置
-        player->move(upPressed, downPressed, leftPressed, rightPressed);
+        QPointF oldPos = player->pos();
+        // 定身期间禁止移动
+        if (stunTimer > 0) {
+            player->move(false, false, false, false);
+        } else {
+            player->move(upPressed, downPressed, leftPressed, rightPressed);
+        }
         // ========== 新增：水碰撞回退 ==========
         if (tileMap->collidesWithWater(player->hitboxRect())) {
             player->setPos(oldPos);                        // 回退到移动前
@@ -713,8 +1117,8 @@ void Game::updateGame()
         pet->update(player->pos());
     }
 
-    // 更新背后火焰动画和位置
-    if (fireBgItem && player && !g_fireBgFrames.isEmpty()) {
+    // 更新背后火焰动画和位置（2级+才显示）
+    if (fireBgItem && player && player->getLevel() >= 2 && !g_fireBgFrames.isEmpty()) {
         QRectF playerRect = player->sceneBoundingRect();
         fireBgItem->setPos(playerRect.center() + QPointF(-40, -40));
         fireBgTick++;
@@ -729,8 +1133,33 @@ void Game::updateGame()
     updateEnemyProjectiles();  // ← 更新所有敌人炮弹
     updateSpawners();          // ← 更新所有巢穴
     updateHud();               // ← 更新 HUD 位置和数值
+    // ========== 传送门旋转 ==========
+    portalRotTick++;
+    if (portalRotTick >= 12) {  // 每 12 帧旋转 90°
+        portalRotTick = 0;
+        for (auto *s : portalSprites) {
+            if (s) s->setRotation(s->rotation() + 90);
+        }
+    }
+
     checkPortal();
     checkInteractions();
+    updateMinimap();            // ← 更新小地图红点位置
+    updateDiamonds();           // ← 钻石动画与碰撞
+    updatePetals();             // ← 梅花瓣粒子
+    // 紫钻 buff：更新头顶十字位置，到期移除
+    if (attackBuffTimer > 0) {
+        attackBuffTimer--;
+        if (buffIndicator && player) {
+            QPointF pc = player->sceneBoundingRect().center();
+            buffIndicator->setPos(pc.x() - 8, pc.y() - 40);
+        }
+        if (attackBuffTimer == 0 && buffIndicator) {
+            if (buffIndicator->scene()) buffIndicator->scene()->removeItem(buffIndicator);
+            delete buffIndicator;
+            buffIndicator = nullptr;
+        }
+    }
 }
 
 void Game::checkPortal()
@@ -755,10 +1184,10 @@ void Game::checkPortal()
 void Game::skillMeteorBurst()
 {
     if (!player) return;
-    if (!player->consumeMp(10)) return; // 消耗 10 MP，不足则无法释放
 
-    // I技能：不移动时才能使用
+    // I技能：不移动时才能使用（先检查方向，再扣蓝）
     if (upPressed || downPressed || leftPressed || rightPressed) return;
+    if (!player->consumeMp(10)) return; // 消耗 10 MP，不足则无法释放
 
     // 变身形态下播放飞火施法动画（间隔1帧，更快）
     if (player->getEnhanced()) {
@@ -769,7 +1198,7 @@ void Game::skillMeteorBurst()
     QPointF center = player->sceneBoundingRect().center();
 
     qreal speed = 8.0;       // 火炮飞行速度（像素/帧）
-    int damage = 25;         // 伤害值
+    int damage = getBuffedDamage(25);  // 伤害值（紫钻翻倍）
     int level = player->getLevel();
 
     // 8 个方向：上、右上、右、右下、下、左下、左、左上
@@ -804,7 +1233,7 @@ void Game::skillBlueBurst()
     // H键：普攻2，蓝色八方向月牙子弹，可边移动边发射
     QPointF center = player->sceneBoundingRect().center();
     qreal speed = 8.0;
-    int damage = 15;           // 伤害略低于I技能
+    int damage = getBuffedDamage(15);  // 伤害（紫钻翻倍）
 
     QVector<QPointF> directions = {
         QPointF(0, -speed),
@@ -953,7 +1382,7 @@ void Game::skillTriangleShot()
 
     QPointF dir = getCurrentDirectionVector();
     qreal speed = 10.0;
-    int damage = 45; // J技能伤害15的3倍
+    int damage = getBuffedDamage(45); // J技能伤害15的3倍（紫钻翻倍）
 
     QPointF velocity(dir.x() * speed, dir.y() * speed);
     QPointF start = player->sceneBoundingRect().center()
@@ -1018,13 +1447,59 @@ QPointF Game::getCurrentDirectionVector()
 void Game::skillFlashBlade()
 {
     if (!player || !tileMap) return;
-    if (flashState.active) return; // 闪现中不能再次闪现
-    if (!player->consumeMp(15)) return; // 消耗 15 MP，不足则无法释放
+    if (flashState.active) return; // 闪现中不能再次使用
 
-    // ========== 1. 检查是否有方向键被按下（静止时不触发）==========
+    // ========== 静止时按 K：回血技能（红色+字上升消失）==========
     if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
+        if (!player->consumeMp(15)) return;
+        player->recoverHpMp(30, 0);
+        qDebug() << "K-heal: recovered 30 HP";
+
+        // 在玩家位置生成 5 个红色"+"字，缓缓上升并消失
+        QPointF center = player->sceneBoundingRect().center();
+        for (int i = 0; i < 5; i++) {
+            auto *cross = new QGraphicsSimpleTextItem("+");
+            cross->setBrush(QBrush(QColor(255, 50, 50)));
+            QFont f = cross->font();
+            f.setPointSize(14 + QRandomGenerator::global()->bounded(8));
+            f.setBold(true);
+            cross->setFont(f);
+            cross->setZValue(50);
+            // 随机散布在玩家周围 40px 范围内
+            qreal ox = QRandomGenerator::global()->bounded(40) - 20;
+            qreal oy = QRandomGenerator::global()->bounded(20) - 10;
+            cross->setPos(center.x() + ox - 8, center.y() + oy - 16);
+            scene->addItem(cross);
+
+            // 动画：上升 + 淡出
+            int duration = 800 + QRandomGenerator::global()->bounded(400); // 0.8~1.2秒
+            int steps = 20;
+            int interval = duration / steps;
+            qreal startY = cross->y();
+            auto *timer = new QTimer(this);
+            int *step = new int(0);
+            connect(timer, &QTimer::timeout, [timer, cross, step, startY, steps]() {
+                (*step)++;
+                qreal t = (qreal)(*step) / steps;
+                cross->setY(startY - t * 60);  // 上升 60px
+                QColor c(255, 50, 50);
+                c.setAlpha(255 * (1.0 - t));    // 淡出
+                cross->setBrush(QBrush(c));
+                if (*step >= steps) {
+                    timer->stop();
+                    if (cross->scene()) cross->scene()->removeItem(cross);
+                    delete cross;
+                    delete step;
+                    timer->deleteLater();
+                }
+            });
+            timer->start(interval);
+        }
         return;
     }
+
+    // ========== 有方向时：闪现斩 ==========
+    if (!player->consumeMp(15)) return; // 消耗 15 MP，不足则无法释放
 
     QPointF dir = getCurrentDirectionVector();
 
@@ -1038,7 +1513,7 @@ void Game::skillFlashBlade()
     for (qreal dist = step; dist <= flashDistance; dist += step) {
         QPointF testPos = oldPos + QPointF(dir.x() * dist, dir.y() * dist);
         player->setPos(testPos);
-        if (tileMap->collidesWithWall(player->hitboxRect())) {
+        if (!adminMode && tileMap->collidesWithWall(player->hitboxRect())) {
             finalPos = currentPos;
             break;
         }
@@ -1199,7 +1674,7 @@ void Game::skillNormalAttack()
         if (attackRect.intersects(hittableRect)) {
             Enemy *enemy = dynamic_cast<Enemy*>(hittable);
             if (enemy) {
-                enemy->takeDamage(15);
+                enemy->takeDamage(getBuffedDamage(15));
             }
             qDebug() << "Normal Attack Hit! Damage: 15"
                      << "to hittable object at" << hittable->pos();
@@ -1215,6 +1690,7 @@ void Game::skillShieldActivate()
     // 创建玄武盾：比玩家稍大的圆形（半径 28px）
     shieldItem = new QGraphicsEllipseItem(-28, -28, 56, 56);
     shieldItem->setPos(player->sceneBoundingRect().center());
+    shieldItem->setZValue(30);  // 在玩家（Z=2）和敌人（Z=5~6）之上
     // 玄武盾颜色：半透明青蓝色 + 发光边框
     shieldItem->setBrush(QBrush(QColor(100, 180, 255, 80)));
     shieldItem->setPen(QPen(QColor(150, 220, 255, 150), 3));
@@ -1383,6 +1859,339 @@ void Game::updateKeyDisplay()
     }
 }
 
+void Game::createMinimap()
+{
+    if (!scene || !tileMap) return;
+
+    int mapW = tileMap->getMapWidth() * tileMap->getTileWidth();
+    int mapH = tileMap->getMapHeight() * tileMap->getTileHeight();
+    if (mapW <= 0 || mapH <= 0) return;
+
+    // 小地图尺寸
+    qreal mmW = 150;
+    qreal scale = mmW / mapW;
+    qreal mmH = mapH * scale;
+
+    // 渲染场景到小 pixmap
+    QPixmap pixmap(mmW, mmH);
+    pixmap.fill(QColor(0, 0, 0, 180));
+    QPainter painter(&pixmap);
+    scene->render(&painter, QRectF(0, 0, mmW, mmH), QRectF(0, 0, mapW, mapH));
+    painter.end();
+
+    minimapItem = new QGraphicsPixmapItem();
+    minimapItem->setPixmap(pixmap);
+    minimapItem->setZValue(1000);
+    minimapItem->setOpacity(0.75);
+    scene->addItem(minimapItem);
+
+    // 玩家红点
+    minimapDot = new QGraphicsEllipseItem(-3, -3, 6, 6);
+    minimapDot->setBrush(QBrush(Qt::red));
+    minimapDot->setPen(QPen(Qt::white, 1));
+    minimapDot->setZValue(1001);
+    scene->addItem(minimapDot);
+}
+
+void Game::updateMinimap()
+{
+    if (!minimapItem || !minimapDot || !player || !tileMap) return;
+
+    // 小地图固定在视口右上角
+    int vpW = viewport()->width();
+    QPointF mmPos = mapToScene(vpW - 160, 10);
+    minimapItem->setPos(mmPos);
+
+    // 红点 = 玩家位置按比例缩放
+    int mapW = tileMap->getMapWidth() * tileMap->getTileWidth();
+    int mapH = tileMap->getMapHeight() * tileMap->getTileHeight();
+    if (mapW <= 0 || mapH <= 0) return;
+    qreal scale = 150.0 / mapW;
+
+    QPointF pc = player->sceneBoundingRect().center();
+    minimapDot->setPos(mmPos.x() + pc.x() * scale,
+                       mmPos.y() + pc.y() * scale);
+}
+
+void Game::spawnDiamonds()
+{
+    if (!tileMap || !scene) return;
+    int mw = tileMap->getMapWidth();
+    int mh = tileMap->getMapHeight();
+    int ts = tileMap->getTileWidth();
+    if (mw <= 0 || mh <= 0) return;
+
+    QStringList imgPaths = {
+        ":/images/red_diamond.png",
+        ":/images/blue_diamond.png",
+        ":/images/purple_diamond.png"
+    };
+    int count = qMin(18, mw * mh / 200);  // 大约每200个tile放1个钻石
+
+    for (int n = 0; n < count; n++) {
+        // 随机尝试找可通行位置
+        for (int attempt = 0; attempt < 20; attempt++) {
+            int gx = QRandomGenerator::global()->bounded(2, mw - 2);
+            int gy = QRandomGenerator::global()->bounded(2, mh - 2);
+            QRectF testRect(gx * ts, gy * ts, ts, ts);
+            if (!tileMap->collidesWithWall(testRect) && !tileMap->collidesWithWater(testRect)) {
+                int type = QRandomGenerator::global()->bounded(3);
+                auto *item = new QGraphicsPixmapItem();
+                QPixmap pm(imgPaths[type]);
+                qreal s = (qreal)ts / pm.width();
+                item->setTransform(QTransform::fromScale(s, s));
+                item->setPixmap(pm);
+                item->setPos(gx * ts, gy * ts);
+                item->setZValue(6);
+                item->setTransformationMode(Qt::SmoothTransformation);
+                scene->addItem(item);
+                diamonds.append({item, type});
+                break;
+            }
+        }
+    }
+    qDebug() << "[spawnDiamonds] placed" << diamonds.size() << "diamonds";
+}
+
+void Game::updateDiamonds()
+{
+    if (!player) return;
+    QRectF pr = player->hitboxRect();
+
+    for (int i = diamonds.size() - 1; i >= 0; --i) {
+        auto &d = diamonds[i];
+        if (!d.item) continue;
+
+        // 碰撞检测
+        if (pr.intersects(d.item->sceneBoundingRect())) {
+            QPointF dc = d.item->sceneBoundingRect().center();
+            int type = d.type;
+
+            // 移除钻石
+            scene->removeItem(d.item);
+            delete d.item;
+            diamonds.removeAt(i);
+
+            if (type == 0) {
+                // 红钻石：补血 25 + 红十字特效
+                player->recoverHpMp(25, 0);
+                spawnCrossEffect(dc, 0);  // 红色十字
+            } else if (type == 1) {
+                // 蓝钻石：补蓝 25 + 蓝十字特效
+                player->recoverHpMp(0, 25);
+                spawnCrossEffect(dc, 1);  // 蓝色十字
+            } else {
+                // 紫钻石：攻击翻倍 10s + 头顶固定紫色十字
+                attackBuffTimer = ATTACK_BUFF_DURATION;
+                if (buffIndicator) { delete buffIndicator; }
+                buffIndicator = new QGraphicsSimpleTextItem("+");
+                buffIndicator->setBrush(QBrush(QColor(180, 60, 255)));
+                QFont f = buffIndicator->font();
+                f.setPointSize(20); f.setBold(true);
+                buffIndicator->setFont(f);
+                buffIndicator->setZValue(50);
+                scene->addItem(buffIndicator);
+            }
+        }
+    }
+}
+
+void Game::spawnCrossEffect(QPointF center, int colorType)
+{
+    // colorType: 0=红, 1=蓝, 2=紫
+    QColor colors[] = {
+        QColor(255, 50, 50),    // 红
+        QColor(50, 120, 255),   // 蓝
+        QColor(180, 60, 255)    // 紫
+    };
+    QColor c = colors[colorType];
+
+    for (int i = 0; i < 5; i++) {
+        auto *cross = new QGraphicsSimpleTextItem("+");
+        cross->setBrush(QBrush(c));
+        QFont f = cross->font();
+        f.setPointSize(14 + QRandomGenerator::global()->bounded(8));
+        f.setBold(true);
+        cross->setFont(f);
+        cross->setZValue(50);
+        qreal ox = QRandomGenerator::global()->bounded(40) - 20;
+        cross->setPos(center.x() + ox - 8, center.y() - 16);
+        scene->addItem(cross);
+
+        int duration = 800 + QRandomGenerator::global()->bounded(400);
+        int steps = 20;
+        int interval = duration / steps;
+        qreal startY = cross->y();
+        auto *timer = new QTimer(this);
+        int *step = new int(0);
+        connect(timer, &QTimer::timeout, [timer, cross, step, startY, steps, c]() {
+            (*step)++;
+            qreal t = (qreal)(*step) / steps;
+            cross->setY(startY - t * 60);
+            QColor fc = c;
+            fc.setAlpha(255 * (1.0 - t));
+            cross->setBrush(QBrush(fc));
+            if (*step >= steps) {
+                timer->stop();
+                if (cross->scene()) cross->scene()->removeItem(cross);
+                delete cross;
+                delete step;
+                timer->deleteLater();
+            }
+        });
+        timer->start(interval);
+    }
+}
+
+void Game::spawnArrivalEffect(QPointF center)
+{
+    // 红白交错竖线激光，从上向下闪过
+    for (int i = 0; i < 10; i++) {
+        QColor c = (i % 2 == 0) ? QColor(255, 60, 60) : QColor(255, 255, 255);
+        qreal ox = QRandomGenerator::global()->bounded(70) - 35;
+        qreal h = 80 + QRandomGenerator::global()->bounded(100);  // 80~180px
+        qreal w = 2 + QRandomGenerator::global()->bounded(4);
+        auto *line = new QGraphicsRectItem(-w/2, 0, w, h);
+        line->setBrush(QBrush(c));
+        line->setPen(Qt::NoPen);
+        line->setPos(center.x() + ox, center.y() - 30);
+        line->setZValue(50);
+        scene->addItem(line);
+
+        int duration = 700 + QRandomGenerator::global()->bounded(500); // 0.7~1.2s
+        int steps = 20;
+        int interval = duration / steps;
+        auto *timer = new QTimer(this);
+        int *step = new int(0);
+        qreal startY = line->y();
+        connect(timer, &QTimer::timeout, [timer, line, step, startY, steps]() {
+            (*step)++;
+            qreal t = (qreal)(*step) / steps;
+            line->setY(startY + t * 40);  // 向下移动
+            QColor c = line->brush().color();
+            c.setAlpha(255 * (1.0 - t));
+            line->setBrush(QBrush(c));
+            qreal h = line->rect().height();
+            line->setRect(-line->rect().width()/2, 0, line->rect().width(), h * (1.0 - t * 0.7));
+            if (*step >= steps) {
+                timer->stop();
+                if (line->scene()) line->scene()->removeItem(line);
+                delete line;
+                delete step;
+                timer->deleteLater();
+            }
+        });
+        timer->start(interval);
+    }
+}
+
+void Game::updatePetals()
+{
+    if (!scene || !player) return;
+
+    // 每帧从右上生成，暴雪密度
+    static int spawnTick = 0;
+    spawnTick++;
+    if (spawnTick >= 1 && petals.size() < 200) {
+        spawnTick = 0;
+        QPointF vpTopRight = mapToScene(viewport()->width(), 0);
+        qreal vpH = mapToScene(0, viewport()->height()).y() - mapToScene(0, 0).y();
+
+        // 随机梅花或叶子
+        bool isFlower = (QRandomGenerator::global()->bounded(2) == 0);
+        auto *leaf = new QGraphicsEllipseItem(-2, -5, 4, 10);
+        if (isFlower) {
+            // 梅花瓣：粉白
+            leaf->setBrush(QBrush(QColor(255, 180 + QRandomGenerator::global()->bounded(60), 200 + QRandomGenerator::global()->bounded(40), 200)));
+            leaf->setPen(QPen(QColor(255, 150, 180, 150), 1));
+        } else {
+            // 叶子：亮绿/黄绿
+            int g = 180 + QRandomGenerator::global()->bounded(75);
+            leaf->setBrush(QBrush(QColor(60, g, 30, 200)));
+            leaf->setPen(QPen(QColor(80, g-20, 40, 140), 1));
+        }
+        // 从右上方随机位置出现
+        qreal startX = vpTopRight.x() - 20 + QRandomGenerator::global()->bounded(40);
+        qreal startY = mapToScene(0, 0).y() - QRandomGenerator::global()->bounded((int)vpH * 0.4);
+        leaf->setPos(startX, startY);
+        leaf->setZValue(10000);
+        leaf->setTransformOriginPoint(2, 5);
+        scene->addItem(leaf);
+
+        Petal p;
+        p.item = leaf;
+        p.vx = -(0.3 + QRandomGenerator::global()->bounded(15) / 10.0);  // 向左飘 -0.3~-1.8
+        p.vy = 0.3 + QRandomGenerator::global()->bounded(12) / 10.0;     // 向下 0.3~1.5
+        p.rotation = QRandomGenerator::global()->bounded(360);
+        p.life = 500 + QRandomGenerator::global()->bounded(300);  // 8~13秒
+        petals.append(p);
+    }
+
+    // 更新所有落叶
+    QPointF vpBotLeft = mapToScene(0, viewport()->height());
+    for (int i = petals.size() - 1; i >= 0; --i) {
+        Petal &p = petals[i];
+        p.life--;
+        p.rotation += 0.8;  // 稍快旋转
+        p.vx += qCos(p.rotation * M_PI / 180.0) * 0.015;  // 左右摇摆
+
+        qreal nx = p.item->x() + p.vx;
+        qreal ny = p.item->y() + p.vy;
+        p.item->setPos(nx, ny);
+        p.item->setRotation(p.rotation);
+
+        // 仅在最后 20 帧快速淡出
+        if (p.life < 20) {
+            QColor c = p.item->brush().color();
+            c.setAlpha(c.alpha() * p.life / 20);
+            p.item->setBrush(QBrush(c));
+        }
+
+        // 超出左下屏幕或寿命结束
+        if (p.life <= 0 || nx < vpBotLeft.x() - 40 || ny > vpBotLeft.y() + 40) {
+            scene->removeItem(p.item);
+            delete p.item;
+            petals.removeAt(i);
+        }
+    }
+}
+
+void Game::processAdminKey(int key)
+{
+    static int pendingX = 0;
+    if (!player || !tileMap) return;
+
+    if (key == Qt::Key_X) { pendingX = 1; qDebug() << "Admin: x pressed, waiting for num"; return; }
+
+    int num = key - Qt::Key_0;
+    if (pendingX == 1) {
+        pendingX = 0;
+        if (num == 0) { loadMap(":/maps/school_map.tmj", true); qDebug() << "Admin: → school_map spawn"; }
+        else if (num == 1) { loadMap(":/maps/chamber1.tmj", true); qDebug() << "Admin: → chamber1"; }
+        else if (num == 2) { loadMap(":/maps/lianda.tmj", true); qDebug() << "Admin: → lianda"; }
+        else if (num == 3) { loadMap(":/maps/Weiming_lake.tmj", true); qDebug() << "Admin: → Weiming_lake"; }
+        return;
+    }
+
+    if (num >= 1 && num <= 9) {
+        player->setLevel(num);
+        if (num >= 3) player->setEnhanced(true); else player->setEnhanced(false);
+        explosionsEnabled = (num >= 5);
+        qDebug() << "Admin: level set to" << num;
+    }
+}
+
+bool Game::isNearPortal() const
+{
+    if (!player || !tileMap) return false;
+    int ts = tileMap->getTileWidth();  // 32
+    QRectF nearRect = player->hitboxRect().adjusted(-ts * 2, -ts * 2, ts * 2, ts * 2);
+    for (const Portal &p : tileMap->getPortals()) {
+        if (nearRect.intersects(p.rect)) return true;
+    }
+    return false;
+}
+
 void Game::addEnemyProjectile(EnemyProjectile *ep)
 {
     if (ep) {
@@ -1432,6 +2241,16 @@ void Game::addEnemy(Enemy *e)
 void Game::onPlayerLevelUp(int newLevel)
 {
     qDebug() << "Player leveled up to" << newLevel;
+    if (newLevel == 2) {
+        // 2级：开启背后火焰
+        if (!fireBgItem && !g_fireBgFrames.isEmpty()) {
+            fireBgItem = new QGraphicsPixmapItem();
+            scene->addItem(fireBgItem);
+            fireBgItem->setTransformationMode(Qt::SmoothTransformation);
+            fireBgItem->setZValue(1);
+            fireBgItem->setPixmap(g_fireBgFrames[0]);
+        }
+    }
     if (newLevel == 3) {
         // 3级：播放变身动画，结束后自动 setEnhanced(true)
         playTransformAnimation();
@@ -1456,12 +2275,12 @@ void Game::playTransformAnimation()
     transformMovie = new QMovie(":/images/player_tranform.gif");
     transformItem = new QGraphicsPixmapItem();
     transformItem->setTransformationMode(Qt::SmoothTransformation);
-    transformItem->setZValue(9999);
+    transformItem->setZValue(999999);  // 绝对最上层
     scene->addItem(transformItem);
 
-    // 居中显示（基于视口中心对应的场景坐标）
-    QPointF viewCenter = mapToScene(viewport()->rect().center());
-    transformItem->setPos(viewCenter.x() - 400, viewCenter.y() - 388);
+    // 以玩家为中心显示（场景坐标）
+    QPointF pc = player->sceneBoundingRect().center();
+    transformItem->setPos(pc.x() - 400, pc.y() - 388);
 
     connect(transformMovie, &QMovie::frameChanged, [this](int frameNumber) {
         QPixmap frame = transformMovie->currentPixmap();
@@ -1507,7 +2326,49 @@ void Game::updateEnemyProjectiles()
                 qDebug() << "Enemy projectile blocked by shield!";
             } else {
                 player->takeDamage(ep->getDamage());
-                qDebug() << "Player hit by enemy! Damage:" << ep->getDamage();
+                stunTimer = STUN_DURATION;  // 定身 0.2s
+                qDebug() << "Player hit by enemy! Damage:" << ep->getDamage() << "Stunned.";
+
+                // 生成 4 个紫色"-"号旋转上升
+                QPointF pc = player->sceneBoundingRect().center();
+                for (int j = 0; j < 4; j++) {
+                    auto *minus = new QGraphicsSimpleTextItem("-");
+                    minus->setBrush(QBrush(QColor(180, 60, 255)));
+                    QFont f = minus->font();
+                    f.setPointSize(16 + QRandomGenerator::global()->bounded(6));
+                    f.setBold(true);
+                    minus->setFont(f);
+                    minus->setZValue(50);
+                    qreal ox = QRandomGenerator::global()->bounded(30) - 15;
+                    qreal oy = QRandomGenerator::global()->bounded(20) - 40;
+                    minus->setPos(pc.x() + ox, pc.y() + oy);
+                    scene->addItem(minus);
+
+                    int duration = 600 + QRandomGenerator::global()->bounded(300);
+                    int steps = 15;
+                    int interval = duration / steps;
+                    auto *t = new QTimer(this);
+                    int *step = new int(0);
+                    qreal startX = minus->x(), startY = minus->y();
+                    connect(t, &QTimer::timeout, [t, minus, step, startX, startY, steps]() {
+                        (*step)++;
+                        qreal r = (qreal)(*step) / steps;
+                        minus->setY(startY - r * 50);  // 上升
+                        // 左右摆动模拟旋转
+                        minus->setX(startX + qSin(r * M_PI * 3) * 15);
+                        QColor c(180, 60, 255);
+                        c.setAlpha(255 * (1.0 - r));
+                        minus->setBrush(QBrush(c));
+                        if (*step >= steps) {
+                            t->stop();
+                            if (minus->scene()) minus->scene()->removeItem(minus);
+                            delete minus;
+                            delete step;
+                            t->deleteLater();
+                        }
+                    });
+                    t->start(interval);
+                }
             }
             alive = false;
         }
@@ -1583,6 +2444,8 @@ void Game::performTeleport(const Portal &portal)
             qreal dist = QLineF(pet->pos(), player->pos()).length();
             if (dist > 160.0) pet->resetToOwner(player->pos());
         }
+        // 传送到达特效
+        spawnArrivalEffect(player->sceneBoundingRect().center());
         // 恢复冷却
         QTimer::singleShot(2000, this, [this]() {
             canTeleport = true;
@@ -1614,6 +2477,8 @@ void Game::performTeleport(const Portal &portal)
         }
         // 跨地图传送后宠物重置
         if (pet) pet->resetToOwner(player->pos());
+        // 传送到达特效
+        spawnArrivalEffect(player->sceneBoundingRect().center());
         // 跨地图冷却稍长
         QTimer::singleShot(5000, this, [this]() {
             canTeleport = true;

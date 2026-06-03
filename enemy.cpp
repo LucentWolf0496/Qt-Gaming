@@ -6,7 +6,53 @@
 #include <QPen>
 #include <QDebug>
 #include <QRandomGenerator>
+#include <QImageReader>
+#include <QStringList>
 #include <algorithm>
+
+// ========== 全局 monster 帧缓存（预提取，所有敌人共享） ==========
+static QVector<QVector<QPixmap>> g_monsterFrames;  // 每种 monster 的帧序列
+static bool g_monsterLoaded = false;
+
+static const QStringList g_monsterPaths = {
+    ":/images/monster_bomb.gif",
+    ":/images/monster_boss_hit.gif",
+    ":/images/monster_cool_phone.gif",
+    ":/images/monster_paper.gif",
+    ":/images/monster_pencil_right.gif",
+    ":/images/monster_terrible_phone.gif",
+    ":/images/monster_xuanzhi.gif",
+    ":/images/monster_zhannindeguang.gif"
+};
+
+void preloadMonsterFrames()
+{
+    if (g_monsterLoaded) return;
+    g_monsterLoaded = true;
+
+    for (const QString &path : g_monsterPaths) {
+        QVector<QPixmap> frames;
+        QImageReader reader(path);
+        reader.setAutoDetectImageFormat(true);
+        int count = 0;
+        while (reader.canRead()) {
+            QImage img = reader.read();
+            if (!img.isNull()) {
+                // 每 2 帧取 1 帧，减少内存
+                if (count % 2 == 0) {
+                    frames.append(QPixmap::fromImage(img));
+                }
+                count++;
+            }
+        }
+        if (!frames.isEmpty()) {
+            g_monsterFrames.append(frames);
+        } else {
+            qDebug() << "preloadMonsterFrames: failed to load" << path;
+        }
+    }
+    qDebug() << "preloadMonsterFrames: loaded" << g_monsterFrames.size() << "monster types";
+}
 
 // ============================================================================
 //  EnemyProjectile 怪物炮弹
@@ -22,6 +68,7 @@ EnemyProjectile::EnemyProjectile(QPointF startPos, QPointF velocity, int damage,
     // 紫色炮弹：圆形，半径 5px
     setRect(-5, -5, 10, 10);
     setPos(startPos);
+    setZValue(6);  // 在敌人（Z=5）之上
     setBrush(QBrush(QColor(160, 32, 240)));      // 紫色填充
     setPen(QPen(QColor(220, 100, 255), 2));      // 亮紫边框
     if (scene) {
@@ -73,18 +120,28 @@ Enemy::Enemy(TileMap *tileMap, QGraphicsScene *scene, QPointF startPos, Game *ga
       maxHp(initialHp),
       dead(false)
 {
-    // 加载怪物贴图（保留原始分辨率，用 transform 缩放到 32x32）
-    QPixmap pixmap(":/images/minion.png");
-    if (pixmap.isNull()) {
-        qDebug() << "Failed to load minion.png, using green placeholder.";
-        pixmap = QPixmap(32, 32);
-        pixmap.fill(Qt::darkGreen);
+    // 随机选择一种 monster 帧缓存（预提取，零运行时解码开销）
+    if (!g_monsterFrames.isEmpty()) {
+        monsterType = QRandomGenerator::global()->bounded(g_monsterFrames.size());
+        animFrame = QRandomGenerator::global()->bounded(g_monsterFrames[monsterType].size());
+        const QPixmap &firstFrame = g_monsterFrames[monsterType][animFrame];
+        qreal sx = 32.0 / firstFrame.width();
+        qreal sy = 32.0 / firstFrame.height();
+        setTransform(QTransform::fromScale(sx, sy));
+        setPixmap(firstFrame);
+    } else {
+        // 回退：使用 minion.png
+        QPixmap pixmap(":/images/minion.png");
+        if (!pixmap.isNull()) {
+            qreal sx = 32.0 / pixmap.width();
+            qreal sy = 32.0 / pixmap.height();
+            setTransform(QTransform::fromScale(sx, sy));
+            setPixmap(pixmap);
+        }
     }
-    setPixmap(pixmap);
-    qreal sx = 32.0 / pixmap.width();
-    qreal sy = 32.0 / pixmap.height();
-    setTransform(QTransform::fromScale(sx, sy));
+
     setPos(startPos);
+    setZValue(5);  // 在地形（Z≤0）和玩家（Z=2）之上
     setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
     setTransformationMode(Qt::SmoothTransformation);
 
@@ -135,6 +192,25 @@ void Enemy::randomizeDirection()
     }
 }
 
+void Enemy::updateMonsterFrame()
+{
+    if (monsterType < 0 || monsterType >= g_monsterFrames.size()) return;
+    const QVector<QPixmap> &frames = g_monsterFrames[monsterType];
+    if (frames.isEmpty()) return;
+
+    // 每 4 帧切换一次（约 15fps），降低动画速度
+    animTick++;
+    if (animTick >= 4) {
+        animTick = 0;
+        animFrame = (animFrame + 1) % frames.size();
+        const QPixmap &f = frames[animFrame];
+        qreal sx = 32.0 / f.width();
+        qreal sy = 32.0 / f.height();
+        setTransform(QTransform::fromScale(sx, sy));
+        setPixmap(f);
+    }
+}
+
 void Enemy::update()
 {
     if (dead) return;
@@ -154,6 +230,9 @@ void Enemy::update()
         setPos(oldPos);
         randomizeDirection();
     }
+
+    // 更新怪兽帧动画
+    updateMonsterFrame();
 
     // 更新血条位置（跟随怪物）
     if (hpBarBg) hpBarBg->setPos(pos());
@@ -178,8 +257,7 @@ void Enemy::tryAttack()
     QVector<int> allDirs = {0, 1, 2, 3, 4, 5, 6, 7};
     std::shuffle(allDirs.begin(), allDirs.end(), *QRandomGenerator::global());
 
-    QPointF center = pos() + QPointF(boundingRect().width() / 2.0,
-                                     boundingRect().height() / 2.0);
+    QPointF center = sceneBoundingRect().center();  // 用变换后的实际位置
 
     for (int i = 0; i < 3; ++i) {
         QPointF dir;

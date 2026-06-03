@@ -13,8 +13,8 @@ Spawner::Spawner(TileMap *tileMap, QGraphicsScene *scene, QPointF pos, Game *gam
       m_scene(scene),
       game(game),
       spawnCounter(0),
-      spawnInterval(300), // 5 秒（60fps）
-      spawnCount(2),      // 每次生成 2 只
+      spawnInterval(600), // 10 秒（60fps）
+      spawnCount(1),      // 每次生成 1 只
       wave(0),
       hpMultiplier(1.2)
 {
@@ -37,6 +37,7 @@ Spawner::Spawner(TileMap *tileMap, QGraphicsScene *scene, QPointF pos, Game *gam
     setPixmap(pixmap);
     setTransformationMode(Qt::SmoothTransformation);
     setPos(pos);
+    setZValue(1);  // 与宠物同级，在玩家(Z=2)之下
 
     if (scene) {
         scene->addItem(this);
@@ -61,7 +62,7 @@ void Spawner::doSpawn()
     if (!game || !m_scene) return;
 
     // 限制场上怪物数量，超过阈值不再生成
-    const int MAX_ENEMIES = 20;
+    const int MAX_ENEMIES = 10;
     if (game->getEnemyCount() >= MAX_ENEMIES) {
         return;
     }

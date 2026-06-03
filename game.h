@@ -63,8 +63,8 @@ private:
     // 视野缩放
     qreal zoomLevel = 1.0;
     static constexpr qreal ZOOM_STEP = 1.15;
-    static constexpr qreal MIN_ZOOM = 0.3;
-    static constexpr qreal MAX_ZOOM = 4.0;
+    static constexpr qreal MIN_ZOOM = 0.1;   // 可看到整张地图
+    static constexpr qreal MAX_ZOOM = 6.0;
     void applyZoom();
 
     // 闪现动画状态
@@ -157,6 +157,39 @@ private:
     QGraphicsEllipseItem *shieldItem = nullptr; // 玄武盾图形项
     bool shieldActive = false;                  // 玄武盾是否激活
 
+    // ========== 受伤定身 ==========
+    int stunTimer = 0;
+    static const int STUN_DURATION = 12;  // 0.2秒 (60fps × 0.2)
+
+    // ========== 加速技能 O ==========
+    int speedBoostTimer = 0;
+    int speedCooldownTimer = 0;
+    static const int SPEED_BOOST_DURATION = 300;   // 5s
+    static const int SPEED_COOLDOWN = 300;         // 5s
+
+    // ========== 管理员模式 ==========
+    bool adminMode = false;
+    QString keyBuffer;
+    void processAdminKey(int key);
+
+    // ========== 钻石系统 ==========
+    struct Diamond {
+        QGraphicsPixmapItem *item = nullptr;
+        int type = 0;      // 0=红(补血), 1=蓝(补蓝), 2=紫(攻击翻倍)
+    };
+    QVector<Diamond> diamonds;
+    int attackBuffTimer = 0;   // 攻击力翻倍剩余帧数
+    QGraphicsSimpleTextItem *buffIndicator = nullptr;  // 紫钻头顶十字
+    static const int ATTACK_BUFF_DURATION = 600;  // 10秒
+    void spawnDiamonds();
+    void updateDiamonds();
+    void spawnCrossEffect(QPointF center, int colorType);  // 0=红,1=蓝,2=紫
+    void spawnArrivalEffect(QPointF center);  // 传送/出生炫酷竖线激光
+    bool isNearPortal() const;  // 玩家是否在传送门 2 格范围内
+    int getBuffedDamage(int base) const {
+        return (attackBuffTimer > 0) ? base * 2 : base;
+    }
+
     /** 根据当前按键状态获取闪现/刀浪方向向量 */
     QPointF getCurrentDirectionVector();
 
@@ -198,6 +231,34 @@ private:
 
     /** 移除与指定门瓦片相连的所有门区域（BFS） */
     int removeDoorRegion(Tile *startDoor);
+
+    // ========== 梅花瓣粒子 ==========
+    struct Petal {
+        QGraphicsEllipseItem *item;
+        qreal vx, vy;     // 速度
+        qreal rotation;    // 当前角度
+        int life;
+    };
+    QVector<Petal> petals;
+    void updatePetals();
+
+    // ========== 动态水 ==========
+    QVector<Tile*> animatedWaterTiles;
+    int waterFrameIdx = 0;
+    int waterFrameTick = 0;
+
+    // ========== 主地图背景叠加 ==========
+    QGraphicsPixmapItem *bgOverlay = nullptr;
+
+    // ========== 旋转传送门 ==========
+    QVector<QGraphicsPixmapItem*> portalSprites;
+    int portalRotTick = 0;
+
+    // ========== 小地图 ==========
+    QGraphicsPixmapItem *minimapItem = nullptr;
+    QGraphicsEllipseItem *minimapDot = nullptr;
+    void createMinimap();
+    void updateMinimap();
 };
 
 #endif // GAME_H

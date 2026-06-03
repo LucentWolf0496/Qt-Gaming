@@ -20,6 +20,7 @@ Pet::Pet(QGraphicsScene *scene, TileMap *map, QGraphicsItem *parent)
     }
 
     setTransformationMode(Qt::SmoothTransformation);
+    setZValue(1);  // 在地形之上(Z≤0)，玩家之下(Z=2)
     if (scene) scene->addItem(this);
 }
 

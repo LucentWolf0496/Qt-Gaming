@@ -39,6 +39,9 @@ public:
     int getExp() const { return exp; }
     int getMaxExp() const { return maxExp; }
     int getLevel() const { return level; }
+    void setSpeed(qreal s) { speed = s; }
+    qreal getSpeed() const { return speed; }
+    void setLevel(int lvl);  // 管理员直接设级
 
     // ========== 形态切换 ==========
     void setEnhanced(bool enhanced);
@@ -48,6 +51,9 @@ public:
 
     // ========== 死亡重置 ==========
     void reset();          // 新增：重置玩家到初始状态
+
+    // ========== 跨地图状态保持 ==========
+    void restoreState(int lvl, int e, int maxE, int h, int maxH, int m, int maxM, bool enhanced);
 
 signals:
     void levelUp(int newLevel);
@@ -71,6 +77,7 @@ private:
     int level = 1;
 
     bool facingRight = true;
+    int  vertDir = 0;      // -1=上, 0=水平, 1=下
     bool isRunning = false;
     bool isEnhanced = false;
     bool isCasting = false;
@@ -80,7 +87,7 @@ private:
     int castFrameInterval = 2;
     QString currentGifPath;
 
-    void updateAnimationState(bool moving, bool right);
+    void updateAnimationState(bool moving, bool right, int vDir = 0);
 };
 
 #endif // PLAYER_H

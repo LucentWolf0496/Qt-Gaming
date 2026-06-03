@@ -69,38 +69,34 @@ void Player::onFrameChanged(int frame)
     setTransform(QTransform::fromScale(sx, sy));
 }
 
-void Player::updateAnimationState(bool moving, bool right)
+void Player::updateAnimationState(bool moving, bool right, int vDir)
 {
     facingRight = right;
+    vertDir = vDir;
     isRunning = moving;
 
-    // 施法期间不切换动画（但 isRunning 已更新，施法结束时会正确恢复）
+    // 施法期间不切换动画
     if (isCasting) return;
-
-    // 如果移动状态没变且朝向没变，无需切换
-    if (isRunning == moving && facingRight == right && !currentGifPath.isEmpty()) {
-        // 但形态可能变了，需要检查
-        QString expectedPath;
-        if (moving) {
-            expectedPath = isEnhanced ? ":/images/player_enhanced_right_run.gif"
-                                      : ":/images/player_run.gif";
-        } else {
-            expectedPath = isEnhanced ? ":/images/player_enhanced.gif"
-                                      : ":/images/player.gif";
-        }
-        if (currentGifPath == expectedPath) return;
-    }
 
     QString targetPath;
     if (moving) {
-        targetPath = isEnhanced ? ":/images/player_enhanced_right_run.gif"
-                                : ":/images/player_run.gif";
+        if (isEnhanced && vertDir == -1) {
+            targetPath = ":/images/player_enhanced_back_run.gif";   // 上
+        } else if (isEnhanced && vertDir == 1) {
+            targetPath = ":/images/player_enhanced_front_run.gif";  // 下
+        } else if (isEnhanced) {
+            targetPath = ":/images/player_enhanced_right_run.gif";  // 水平
+        } else {
+            targetPath = ":/images/player_run.gif";
+        }
     } else {
         targetPath = isEnhanced ? ":/images/player_enhanced.gif"
                                 : ":/images/player.gif";
     }
 
-    if (currentGifPath != targetPath && movie) {
+    if (currentGifPath == targetPath) return;
+
+    if (movie) {
         currentGifPath = targetPath;
         movie->stop();
         movie->setFileName(targetPath);
@@ -153,7 +149,7 @@ void Player::updateCastAnimation()
             isCasting = false;
             castFrames.clear();
             currentGifPath.clear();
-            updateAnimationState(isRunning, facingRight);
+            updateAnimationState(isRunning, facingRight, vertDir);
         }
     }
 }
@@ -165,7 +161,7 @@ void Player::setEnhanced(bool enhanced)
 
     // 强制刷新动画
     currentGifPath.clear();
-    updateAnimationState(isRunning, facingRight);
+    updateAnimationState(isRunning, facingRight, vertDir);
 
     qDebug() << "Player enhanced mode:" << (enhanced ? "ON" : "OFF");
 }
@@ -178,12 +174,14 @@ void Player::move(bool up, bool down, bool left, bool right)
     if (up)    dy = -speed;
     if (down)  dy =  speed;
 
-    // 更新朝向（只有水平移动才改变朝向，静止时保持原朝向）
-    if (dx > 0) facingRight = true;
-    else if (dx < 0) facingRight = false;
+    // 更新朝向
+    if (dx > 0)      { facingRight = true;  vertDir = 0; }
+    else if (dx < 0) { facingRight = false; vertDir = 0; }
+    else if (dy < 0) { vertDir = -1; }  // 上
+    else if (dy > 0) { vertDir =  1; }  // 下
 
     bool moving = (dx != 0 || dy != 0);
-    updateAnimationState(moving, facingRight);
+    updateAnimationState(moving, facingRight, vertDir);
 
     if (dx == 0 && dy == 0) return;
 
@@ -263,8 +261,38 @@ void Player::reset()
     setEnhanced(false);
     // 强制刷新动画（重新计算缩放和GIF）
     currentGifPath.clear();
-    updateAnimationState(isRunning, facingRight);
+    updateAnimationState(isRunning, facingRight, vertDir);
     // 重新计算显示大小（等级1是32x32）
     onFrameChanged(0);
     qDebug() << "Player reset to level 1, HP/MP full.";
+}
+
+void Player::setLevel(int lvl)
+{
+    if (lvl < 1) lvl = 1;
+    else {}
+    if (lvl > 20) lvl = 20;
+    else {}
+    level = lvl;
+    maxExp = 100;
+    for (int i = 1; i < lvl; i++) maxExp = static_cast<int>(maxExp * 1.2);
+    exp = 0;
+    maxHp = 100; maxMp = 100;
+    for (int i = 1; i < lvl; i++) { maxHp = static_cast<int>(maxHp * 1.5); maxMp = static_cast<int>(maxMp * 1.5); }
+    hp = maxHp; mp = maxMp;
+    onFrameChanged(0);
+    qDebug() << "Admin: set level" << lvl << "HP:" << hp << "MP:" << mp;
+}
+
+void Player::restoreState(int lvl, int e, int maxE, int h, int maxH, int m, int maxM, bool enhanced)
+{
+    level = lvl;
+    exp = e;
+    maxExp = maxE;
+    hp = h;
+    maxHp = maxH;
+    mp = m;
+    maxMp = maxM;
+    setEnhanced(enhanced);  // 刷新动画和形态
+    qDebug() << "Player state restored: Lv." << level << "HP:" << hp << "/" << maxHp;
 }
