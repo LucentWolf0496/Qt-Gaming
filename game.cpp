@@ -1399,7 +1399,13 @@ void Game::keyPressEvent(QKeyEvent *event)
     case Qt::Key_H: if (!debugMapView && !isNearPortal()) skillTriangleShot(); break;
     case Qt::Key_N: if (!debugMapView && !isNearPortal()) skillBlueBurst(); break;
     case Qt::Key_J: if (!debugMapView && !isNearPortal()) skillNormalAttack(); break;
-    case Qt::Key_K: if (!debugMapView && !isNearPortal()) skillFlashBlade(); break;
+    case Qt::Key_K:
+    if (debugMapView) break;
+    // 闪现技能使用更严格的传送门检测（外扩 6 格）
+    if (!isNearPortal(6)) {
+        skillFlashBlade();
+    }
+    break;
     case Qt::Key_L: if (!debugMapView && !isNearPortal()) skillShieldActivate(); break;
     case Qt::Key_O:
         if (debugMapView) break;
@@ -2857,11 +2863,12 @@ void Game::processAdminKey(int key)
     }
 }
 
-bool Game::isNearPortal() const
+bool Game::isNearPortal(int expandTiles) const
 {
     if (!player || !tileMap) return false;
-    int ts = tileMap->getTileWidth();  // 32
-    QRectF nearRect = player->hitboxRect().adjusted(-ts * 2, -ts * 2, ts * 2, ts * 2);
+    int ts = tileMap->getTileWidth();
+    QRectF nearRect = player->hitboxRect().adjusted(-ts * expandTiles, -ts * expandTiles,
+                                                    ts * expandTiles, ts * expandTiles);
     for (const Portal &p : tileMap->getPortals()) {
         if (nearRect.intersects(p.rect)) return true;
     }
@@ -3058,6 +3065,8 @@ void Game::updateEnemyProjectiles()
 
 void Game::performTeleport(const Portal &portal)
 {
+    clearAllSkillProjectiles();
+
     // 二次确认玩家仍与传送门重叠（防止延迟期间玩家离开）
     if (!player || !tileMap) {
         isTeleporting = false;
@@ -3356,4 +3365,51 @@ int Game::removeDoorRegion(Tile *startDoor)
 
     qDebug() << "Removed" << removedCount << "connected door tiles with one key.";
     return removedCount;
+}
+
+void Game::clearAllSkillProjectiles()
+{
+    // 清理 Projectile（I 技能火球，3级+）
+    for (Projectile *p : projectiles) {
+        if (p->scene()) p->scene()->removeItem(p);
+        delete p;
+    }
+    projectiles.clear();
+
+    // 清理 SimpleProjectile（I 技能红色椭圆弹，1-2级）
+    for (SimpleProjectile *sp : simpleProjectiles) {
+        if (sp->scene()) sp->scene()->removeItem(sp);
+        delete sp;
+    }
+    simpleProjectiles.clear();
+
+    // 清理 BlueProjectile（N 键月牙弹）
+    for (BlueProjectile *bp : blueProjectiles) {
+        if (bp->scene()) bp->scene()->removeItem(bp);
+        delete bp;
+    }
+    blueProjectiles.clear();
+
+    // 清理 TriangleProjectile（H 键破空梭）
+    for (TriangleProjectile *tp : triangleProjectiles) {
+        if (tp->scene()) tp->scene()->removeItem(tp);
+        delete tp;
+    }
+    triangleProjectiles.clear();
+
+    // 清理 BladeWave（K 技能 1级刀浪）
+    for (BladeWave *bw : bladeWaves) {
+        if (bw->scene()) bw->scene()->removeItem(bw);
+        delete bw;
+    }
+    bladeWaves.clear();
+
+    // 清理 DaolangWave（K 技能 2级+ GIF 刀浪）
+    for (DaolangWave *dw : daolangWaves) {
+        if (dw->scene()) dw->scene()->removeItem(dw);
+        delete dw;
+    }
+    daolangWaves.clear();
+
+    qDebug() << "[Portal] All skill projectiles cleared.";
 }

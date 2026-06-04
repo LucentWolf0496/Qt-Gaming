@@ -211,7 +211,7 @@ private:
     void updateDiamonds();
     void spawnCrossEffect(QPointF center, int colorType);  // 0=红,1=蓝,2=紫
     void spawnArrivalEffect(QPointF center);  // 传送/出生炫酷竖线激光
-    bool isNearPortal() const;  // 玩家是否在传送门 2 格范围内
+    bool isNearPortal(int expandTiles = 2) const;
     int getBuffedDamage(int base) const {
         return (attackBuffTimer > 0) ? base * 2 : base;
     }
@@ -312,6 +312,9 @@ private:
     void showIntroDialog(const QString &mapKey); // 显示介绍对话框，参数为地图标识
     bool waitingForIntro = false;    // 是否等待玩家离开传送门以显示介绍
     QString waitingIntroMap;         // 等待显示介绍的地图路径
+
+    /** 清理所有玩家技能产生的弹道（火球、刀浪、月牙弹、破空梭等） */
+    void clearAllSkillProjectiles();
 };
 
 #endif // GAME_H
