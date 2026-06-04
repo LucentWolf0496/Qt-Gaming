@@ -29,6 +29,9 @@ void TileMap::clear()
     playerStart = QPointF();
     mapWidth = 0;
     mapHeight = 0;
+
+    gridFires.clear();
+    m_fireGridPixelSize = 0;
 }
 
 bool TileMap::loadFromFile(const QString &jsonPath)
@@ -171,4 +174,38 @@ void TileMap::removeWallTile(Tile *tile)
     allTiles.removeAll(tile);
     // 重建空间索引（因为墙壁数量少，重建开销可接受）
     buildSpatialGrid();
+}
+
+// tilemap.cpp
+void TileMap::addFireRect(const QRectF &rect)
+{
+    if (m_fireGridPixelSize == 0) {
+        m_fireGridPixelSize = tileSize * GRID_SIZE;
+    }
+    int gx = static_cast<int>(rect.x()) / m_fireGridPixelSize;
+    int gy = static_cast<int>(rect.y()) / m_fireGridPixelSize;
+    gridFires[{gx, gy}].append(rect);
+}
+
+bool TileMap::collidesWithFire(const QRectF &rect) const
+{
+    if (gridFires.isEmpty()) return false;
+    int gridPixelSize = tileSize * GRID_SIZE;
+    int minGx = static_cast<int>(rect.left()) / gridPixelSize;
+    int maxGx = static_cast<int>(rect.right()) / gridPixelSize;
+    int minGy = static_cast<int>(rect.top()) / gridPixelSize;
+    int maxGy = static_cast<int>(rect.bottom()) / gridPixelSize;
+
+    for (int gx = minGx; gx <= maxGx; ++gx) {
+        for (int gy = minGy; gy <= maxGy; ++gy) {
+            auto it = gridFires.find({gx, gy});
+            if (it != gridFires.end()) {
+                for (const QRectF &fireRect : it.value()) {
+                    if (fireRect.intersects(rect))
+                        return true;
+                }
+            }
+        }
+    }
+    return false;
 }

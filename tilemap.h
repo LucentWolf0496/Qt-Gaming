@@ -24,6 +24,11 @@ public:
     void addWallTile(Tile *tile);
     void removeWallTile(Tile *tile);
 
+    /** 添加火焰区域矩形到空间索引 */
+    void addFireRect(const QRectF &rect);
+    /** 检测矩形是否与火焰区域相交（使用空间索引） */
+    bool collidesWithFire(const QRectF &rect) const;
+
     // ========== 新增：水碰撞（仅玩家） ==========
     void addWaterTile(Tile *tile);                       // 添加水瓦片到空间索引
     void addWaterTiles(const QVector<Tile*> &tiles); // 批量添加（推荐）
@@ -56,6 +61,10 @@ private:
     // ========== 新增：水空间索引 ==========
     QVector<Tile*> waterTiles;                           // 所有水瓦片
     QHash<QPair<int,int>, QVector<Tile*>> gridWaters;    // 水的网格索引
+
+    // 火焰空间索引
+    QHash<QPair<int,int>, QVector<QRectF>> gridFires;
+    int m_fireGridPixelSize = 0;
 };
 
 #endif // TILEMAP_H

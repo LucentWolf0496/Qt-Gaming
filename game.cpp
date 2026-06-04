@@ -813,7 +813,8 @@ void Game::loadMap(const QString &mapFilePath, bool useStartPoint)
                             int cleanGid = rawGid & 0x1FFFFFFF;
                             if (cleanGid == 0) continue;
 
-                            fireRects.append(QRectF(x * tileWidth, y * tileHeight, tileWidth, tileHeight));
+                            QRectF fireRect(x * tileWidth, y * tileHeight, tileWidth, tileHeight);
+                            tileMap->addFireRect(fireRect);
 
                             // 随机选择火焰图片（fireland_1 / fireland_2 / fireland_3）
                             int r = QRandomGenerator::global()->bounded(3);
@@ -3211,27 +3212,19 @@ void Game::onPlayerDied()
 void Game::applyTerrainEffects()
 {
     if (!player) return;
-
     QRectF playerRect = player->hitboxRect();
 
-    // 火焰区域伤害
-    bool onFire = false;
-    for (const QRectF &rect : fireRects) {
-        if (playerRect.intersects(rect)) {
-            onFire = true;
-            break;
-        }
-    }
+    bool onFire = tileMap->collidesWithFire(playerRect);
 
     if (onFire) {
         fireDamageCounter++;
         if (fireDamageCounter >= FIRE_DAMAGE_INTERVAL) {
             fireDamageCounter = 0;
-            player->takeDamage(5);   // 每次扣1血
+            player->takeDamage(5);
             qDebug() << "Fireland damage! HP:" << player->getHp();
         }
     } else {
-        fireDamageCounter = 0;   // 离开火焰重置计时器
+        fireDamageCounter = 0;
     }
 }
 
