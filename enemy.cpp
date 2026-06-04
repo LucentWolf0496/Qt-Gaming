@@ -125,16 +125,16 @@ Enemy::Enemy(TileMap *tileMap, QGraphicsScene *scene, QPointF startPos, Game *ga
         monsterType = QRandomGenerator::global()->bounded(g_monsterFrames.size());
         animFrame = QRandomGenerator::global()->bounded(g_monsterFrames[monsterType].size());
         const QPixmap &firstFrame = g_monsterFrames[monsterType][animFrame];
-        qreal sx = 32.0 / firstFrame.width();
-        qreal sy = 32.0 / firstFrame.height();
+        qreal sx = 64.0 / firstFrame.width();
+        qreal sy = 64.0 / firstFrame.height();
         setTransform(QTransform::fromScale(sx, sy));
         setPixmap(firstFrame);
     } else {
         // 回退：使用 minion.png
         QPixmap pixmap(":/images/minion.png");
         if (!pixmap.isNull()) {
-            qreal sx = 32.0 / pixmap.width();
-            qreal sy = 32.0 / pixmap.height();
+            qreal sx = 64.0 / pixmap.width();
+            qreal sy = 64.0 / pixmap.height();
             setTransform(QTransform::fromScale(sx, sy));
             setPixmap(pixmap);
         }
@@ -204,8 +204,8 @@ void Enemy::updateMonsterFrame()
         animTick = 0;
         animFrame = (animFrame + 1) % frames.size();
         const QPixmap &f = frames[animFrame];
-        qreal sx = 32.0 / f.width();
-        qreal sy = 32.0 / f.height();
+        qreal sx = 64.0 / f.width();
+        qreal sy = 64.0 / f.height();
         setTransform(QTransform::fromScale(sx, sy));
         setPixmap(f);
     }

@@ -16,13 +16,13 @@ public:
 
     void move(bool up, bool down, bool left, bool right);
     QRectF hitboxRect() const {
-        if (level <= 1) {
+        if (isTiny || level <= 1)
             return QRectF(x(), y(), 32, 32);
-        } else {
-            return QRectF(x() + 32, y() + 32, 32, 32);
-        }
+        // 96×96 = 3×3格，最下方正中央：(+32, +64)
+        return QRectF(x() + 32, y() + 64, 32, 32);
     }
-    int getDisplaySize() const { return (level <= 1) ? 32 : 64; }
+    int getDisplaySize() const { return (level <= 1) ? 32 : 96; }
+    void setTiny(bool tiny);  // 传送过渡：临时缩为1×1(32×32)或恢复
 
     // ========== 血量蓝量系统 ==========
     int getHp() const { return hp; }
@@ -78,6 +78,7 @@ private:
 
     bool facingRight = true;
     int  vertDir = 0;      // -1=上, 0=水平, 1=下
+    bool isTiny = false;   // 传送过渡临时缩为1×1(32×32)
     bool isRunning = false;
     bool isEnhanced = false;
     bool isCasting = false;

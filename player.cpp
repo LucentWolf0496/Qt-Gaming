@@ -62,7 +62,7 @@ void Player::onFrameChanged(int frame)
     setPixmap(framePixmap);
 
     // 根据等级调整显示大小：1级32×32，2级+64×64
-    int targetSize = (level <= 1) ? 32 : 64;
+    int targetSize = (isTiny || level <= 1) ? 32 : 96;
     QSize origSize = framePixmap.size();
     qreal sx = (qreal)targetSize / origSize.width();
     qreal sy = (qreal)targetSize / origSize.height();
@@ -116,7 +116,7 @@ void Player::playCastAnimation(const QString &gifPath, int frameInterval)
         QImage img = reader.read();
         if (!img.isNull()) {
             castFrames.append(QPixmap::fromImage(img).scaled(
-                64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         }
     }
     if (castFrames.isEmpty()) return;
@@ -295,4 +295,12 @@ void Player::restoreState(int lvl, int e, int maxE, int h, int maxH, int m, int 
     maxMp = maxM;
     setEnhanced(enhanced);  // 刷新动画和形态
     qDebug() << "Player state restored: Lv." << level << "HP:" << hp << "/" << maxHp;
+}
+
+void Player::setTiny(bool tiny)
+{
+    if (isTiny == tiny) return;
+    isTiny = tiny;
+    onFrameChanged(0);  // 刷新显示大小
+    qDebug() << "Player tiny mode:" << (tiny ? "ON (1×1)" : "OFF (96×96)");
 }

@@ -18,20 +18,28 @@ Spawner::Spawner(TileMap *tileMap, QGraphicsScene *scene, QPointF pos, Game *gam
       wave(0),
       hpMultiplier(1.2)
 {
-    // 占位图：深红色方块带白色 "巢" 字
+    // 时空漩涡：蓝色竖椭圆，外蓝 → 中黑 → 内核亮蓝
     QPixmap pixmap(40, 40);
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(QBrush(QColor(139, 0, 0, 200)));
-    painter.setPen(QPen(Qt::darkRed, 2));
-    painter.drawRoundedRect(2, 2, 36, 36, 6, 6);
-    painter.setPen(Qt::white);
-    QFont font = painter.font();
-    font.setPointSize(14);
-    font.setBold(true);
-    painter.setFont(font);
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, "巢");
+
+    // 外层蓝色光晕
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QBrush(QColor(30, 80, 200, 200)));
+    painter.drawEllipse(4, 0, 32, 40);
+
+    // 中层深色过渡
+    painter.setBrush(QBrush(QColor(10, 25, 80, 210)));
+    painter.drawEllipse(9, 5, 22, 30);
+
+    // 内层黑色核心
+    painter.setBrush(QBrush(QColor(0, 0, 0, 230)));
+    painter.drawEllipse(13, 10, 14, 20);
+
+    // 中心亮蓝光点
+    painter.setBrush(QBrush(QColor(80, 160, 255, 200)));
+    painter.drawEllipse(16, 14, 8, 12);
     painter.end();
 
     setPixmap(pixmap);

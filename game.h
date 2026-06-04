@@ -174,6 +174,30 @@ private:
     QString keyBuffer;
     void processAdminKey(int key);
 
+    // ========== 调试：地图图层置顶 ==========
+    bool debugMapView = false;
+
+    // ========== 子空间区域ID：0=无, 1=garden, 2=gateway, 3=maze, 4=secret ==========
+    int subspaceId = 0;
+
+    // ========== 雾和树叠加层引用（用于运行时调整透明度）==========
+    QGraphicsPixmapItem *fogOverlay = nullptr;
+    qreal fogTargetOpacity = 0.0;            // 雾目标透明度（10s渐变）
+    QVector<QGraphicsPixmapItem*> treeOverlays;
+
+    // ========== 黑幕（区域过渡用）==========
+    QGraphicsRectItem *blackCurtain = nullptr;
+    int curtainOpacityTarget = 0;   // 目标透明度百分比 (0~100)
+
+    // ========== 传送过渡状态 ==========
+    bool portalTransitionActive = false;
+    int  portalTransitionPhase = 0;  // 0=idle, 1=fadeOut, 2=teleported, 3=fadeIn→done
+    int  portalTransitionTick = 0;
+    QPointF portalDest;              // 传送目标像素坐标
+    bool portalShrink = true;        // true=缩小(→1×1), false=恢复(→96×96)
+    int portalCooldown = 0;          // 传送后冷却帧数，防止立即反弹
+    static const int FADE_SPEED = 3; // 每帧透明度变化量
+
     // ========== 钻石系统 ==========
     struct Diamond {
         QGraphicsPixmapItem *item = nullptr;
@@ -244,14 +268,6 @@ private:
     QVector<Petal> petals;
     void updatePetals();
 
-    // ========== 动态水 ==========
-    QVector<Tile*> animatedWaterTiles;
-    int waterFrameIdx = 0;
-    int waterFrameTick = 0;
-
-    // ========== 主地图背景叠加 ==========
-    QGraphicsPixmapItem *bgOverlay = nullptr;
-
     // ========== 旋转传送门 ==========
     QVector<QGraphicsPixmapItem*> portalSprites;
     int portalRotTick = 0;
@@ -259,6 +275,7 @@ private:
     // ========== 小地图 ==========
     QGraphicsPixmapItem *minimapItem = nullptr;
     QGraphicsEllipseItem *minimapDot = nullptr;
+    QGraphicsSimpleTextItem *minimapPosText = nullptr;  // 实时坐标
     void createMinimap();
     void updateMinimap();
 

@@ -146,5 +146,14 @@
         <file>maps/Weiming_lake.tmj</file>
         <file>maps/new_school_map.tmj</file>
         <file>maps/ending.tmj</file>
+        <file>images/maze.png</file>
+        <file>images/gateway.png</file>
+        <file>images/gateway_better.png</file>
+        <file>images/garden.png</file>
+        <file>images/school_secret_place.png</file>
+        <file>images/tree.png</file>
+        <file>images/fog.png</file>
+        <file>images/fog_dark.png</file>
+        <file>images/ending.jpg</file>
     </qresource>
 </RCC>
