@@ -18,34 +18,32 @@ Spawner::Spawner(TileMap *tileMap, QGraphicsScene *scene, QPointF pos, Game *gam
       wave(0),
       hpMultiplier(1.2)
 {
-    // 时空漩涡：蓝色竖椭圆，外蓝 → 中黑 → 内核亮蓝
-    QPixmap pixmap(40, 40);
+    // 时空漩涡：3×3 tiles (96×96)，中心定位
+    const int SZ = 96;
+    QPixmap pixmap(SZ, SZ);
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // 外层蓝色光晕
     painter.setPen(Qt::NoPen);
+    // 外层蓝色光晕
     painter.setBrush(QBrush(QColor(30, 80, 200, 200)));
-    painter.drawEllipse(4, 0, 32, 40);
-
+    painter.drawEllipse(10, 0, 76, 96);
     // 中层深色过渡
     painter.setBrush(QBrush(QColor(10, 25, 80, 210)));
-    painter.drawEllipse(9, 5, 22, 30);
-
+    painter.drawEllipse(22, 12, 52, 72);
     // 内层黑色核心
     painter.setBrush(QBrush(QColor(0, 0, 0, 230)));
-    painter.drawEllipse(13, 10, 14, 20);
-
+    painter.drawEllipse(31, 24, 34, 48);
     // 中心亮蓝光点
     painter.setBrush(QBrush(QColor(80, 160, 255, 200)));
-    painter.drawEllipse(16, 14, 8, 12);
+    painter.drawEllipse(38, 34, 20, 28);
     painter.end();
 
     setPixmap(pixmap);
     setTransformationMode(Qt::SmoothTransformation);
-    setPos(pos);
-    setZValue(1);  // 与宠物同级，在玩家(Z=2)之下
+    setPos(pos.x() - SZ/2, pos.y() - SZ/2);  // 中心定位
+    setZValue(4);  // 与传送门同级
 
     if (scene) {
         scene->addItem(this);

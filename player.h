@@ -18,11 +18,14 @@ public:
     QRectF hitboxRect() const {
         if (isTiny || level <= 1)
             return QRectF(x(), y(), 32, 32);
-        // 96×96 = 3×3格，最下方正中央：(+32, +64)
-        return QRectF(x() + 32, y() + 64, 32, 32);
+        // 64×64 = 2×2格，右下角：(+32, +32)
+        return QRectF(x() + 32, y() + 32, 32, 32);
     }
-    int getDisplaySize() const { return (level <= 1) ? 32 : 96; }
-    void setTiny(bool tiny);  // 传送过渡：临时缩为1×1(32×32)或恢复
+    int getDisplaySize() const { return (level <= 1) ? 32 : 64; }
+    void setTiny(bool tiny);
+    bool isBusy() const { return isCasting || keepCastFrame; }
+    bool isCastingNow() const { return isCasting; }  // 仅检查是否在播放帧
+    void clearCastState();   // 强制清除攻击动画状态，恢复站立
 
     // ========== 血量蓝量系统 ==========
     int getHp() const { return hp; }
@@ -46,7 +49,7 @@ public:
     // ========== 形态切换 ==========
     void setEnhanced(bool enhanced);
     bool getEnhanced() const { return isEnhanced; }
-    void playCastAnimation(const QString &gifPath, int frameInterval = 2);
+    void playCastAnimation(const QString &gifPath, int frameInterval = 2, int displaySize = 64, bool keepFrame = false);
     void updateCastAnimation();
 
     // ========== 死亡重置 ==========
@@ -82,8 +85,11 @@ private:
     bool isRunning = false;
     bool isEnhanced = false;
     bool isCasting = false;
+    bool keepCastFrame = false;  // 攻击后保持最后一帧，直到移动
     QVector<QPixmap> castFrames;
     int castFrameIdx = 0;
+    int castDisplaySize = 96;  // 攻击动画显示尺寸（bright版=115）
+    bool castKeepFrame = false; // 动画结束后是否保持最后一帧
     int castFrameTick = 0;
     int castFrameInterval = 2;
     QString currentGifPath;

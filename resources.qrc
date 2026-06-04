@@ -15,6 +15,15 @@
         <file>images/player_enhanced_front_run.gif</file>
         <file>images/player_enhanced_K.gif</file>
         <file>images/player_enhanced_pugong.gif</file>
+        <file>images/player_enhanced_pugong2.gif</file>
+        <file>images/player_enhanced_pugong3.gif</file>
+        <file>images/player_enhanced_pugong_rush.gif</file>
+        <file>images/player_enhanced_k_rush_jumb.gif</file>
+        <file>images/player_enhanced_pugong_bright.gif</file>
+        <file>images/player_enhanced_pugong2_bright.gif</file>
+        <file>images/player_enhanced_pugong3_bright.gif</file>
+        <file>images/player_enhanced_pugong_rush_bright.gif</file>
+        <file>images/player_enhanced_k_rush_jumb_bright.gif</file>
         <file>images/player_enhanced_fly_fire.gif</file>
         <file>images/daolang_left.gif</file>
         <file>images/player.png</file>
@@ -152,8 +161,88 @@
         <file>images/garden.png</file>
         <file>images/school_secret_place.png</file>
         <file>images/tree.png</file>
+        <file>images/winter_tree.png</file>
+        <file>images/autumn_tree.png</file>
+        <file>images/gateway_better_roof.png</file>
+        <file>images/school_secret_place_roof.png</file>
+        <file>images/show_lion.png</file>
+        <file>images/show_cat.png</file>
+        <file>images/show7.png</file>
         <file>images/fog.png</file>
         <file>images/fog_dark.png</file>
+        <file>images/chair_down.png</file>
+        <file>images/chair_up.png</file>
+        <file>images/decoration_1.png</file>
+        <file>images/decoration_2.png</file>
+        <file>images/decoration_3.png</file>
+        <file>images/fireland_east.png</file>
+        <file>images/fireland_north.png</file>
+        <file>images/fireland_northeast_1.png</file>
+        <file>images/fireland_northeast_2.png</file>
+        <file>images/fireland_northwest_1.png</file>
+        <file>images/fireland_northwest_2.png</file>
+        <file>images/fireland_south.png</file>
+        <file>images/fireland_southeast_1.png</file>
+        <file>images/fireland_southeast_2.png</file>
+        <file>images/fireland_southwest_1.png</file>
+        <file>images/fireland_southwest_2.png</file>
+        <file>images/fireland_west.png</file>
+        <file>images/grass_4.png</file>
+        <file>images/tabel_1.png</file>
+        <file>images/tabel_2.png</file>
+        <file>images/tabel_3.png</file>
+        <file>images/tabel_east.png</file>
+        <file>images/tabel_north.png</file>
+        <file>images/tabel_northeast.png</file>
+        <file>images/tabel_northwest.png</file>
+        <file>images/tabel_south.png</file>
+        <file>images/tabel_southeast.png</file>
+        <file>images/tabel_southwest.png</file>
+        <file>images/tabel_west.png</file>
+        <file>images/wall_big.png</file>
+        <file>images/wall_d_big.png</file>
+        <file>images/wall_d_left.png</file>
+        <file>images/wall_d_small.png</file>
+        <file>images/wall_left.png</file>
+        <file>images/wall_r_big.png</file>
+        <file>images/wall_r_left.png</file>
+        <file>images/wall_r_small.png</file>
+        <file>images/wall_small.png</file>
+        <file>images/wall_w_big.png</file>
+        <file>images/wall_w_left.png</file>
+        <file>images/wall_w_small.png</file>
+        <file>images/water_3.png</file>
+        <file>images/water_4.png</file>
+        <file>images/water_5.png</file>
+        <file>images/water_d_east.png</file>
+        <file>images/water_d_north.png</file>
+        <file>images/water_d_northeast_1.png</file>
+        <file>images/water_d_northeast_2.png</file>
+        <file>images/water_d_northwest_1.png</file>
+        <file>images/water_d_northwest_2.png</file>
+        <file>images/water_d_south.png</file>
+        <file>images/water_d_southeast_1.png</file>
+        <file>images/water_d_southeast_2.png</file>
+        <file>images/water_d_southwest_1.png</file>
+        <file>images/water_d_southwest_2.png</file>
+        <file>images/water_d_west.png</file>
+        <file>images/water_east.png</file>
+        <file>images/water_north.png</file>
+        <file>images/water_northeast_1.png</file>
+        <file>images/water_northeast_2.png</file>
+        <file>images/water_northwest_1.png</file>
+        <file>images/water_northwest_2.png</file>
+        <file>images/water_south.png</file>
+        <file>images/water_southeast_1.png</file>
+        <file>images/water_southeast_2.png</file>
+        <file>images/water_southwest_1.png</file>
+        <file>images/water_southwest_2.png</file>
+        <file>images/water_west.png</file>
+        <file>images/floor_outside.png</file>
+        <file>images/interaction_1.png</file>
+        <file>images/interaction_2.png</file>
+        <file>images/interaction_wall.png</file>
         <file>images/ending.jpg</file>
+        <file>images/main_menu_bg.jpg</file>
     </qresource>
 </RCC>

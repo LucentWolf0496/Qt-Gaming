@@ -21,7 +21,7 @@ void TileMap::clear()
     walls.clear();
     gridWalls.clear();
 
-    // ========== 清理水相关 ==========
+    // 清理水相关
     waterTiles.clear();
     gridWaters.clear();
 
@@ -176,28 +176,36 @@ void TileMap::removeWallTile(Tile *tile)
     buildSpatialGrid();
 }
 
-// tilemap.cpp
+// ========== 在 tilemap.cpp 中添加 ==========
+
 void TileMap::addFireRect(const QRectF &rect)
 {
     if (m_fireGridPixelSize == 0) {
-        m_fireGridPixelSize = tileSize * GRID_SIZE;
+        m_fireGridPixelSize = tileSize * GRID_SIZE;  // 复用 GRID_SIZE = 8
     }
-    int gx = static_cast<int>(rect.x()) / m_fireGridPixelSize;
-    int gy = static_cast<int>(rect.y()) / m_fireGridPixelSize;
-    gridFires[{gx, gy}].append(rect);
+    int gridX = static_cast<int>(rect.x()) / m_fireGridPixelSize;
+    int gridY = static_cast<int>(rect.y()) / m_fireGridPixelSize;
+    gridFires[{gridX, gridY}].append(rect);
+}
+
+void TileMap::buildFireGrid()
+{
+    // 本实现中不需要单独重建，因为添加时已经按网格存储。
+    // 但如果需要批量重建（例如清除后重新添加），可以遍历 fireRects 并调用 addFireRect。
+    // 目前我们只在添加每个火焰矩形时直接插入网格，所以 buildFireGrid 可以为空或保留以备后用。
 }
 
 bool TileMap::collidesWithFire(const QRectF &rect) const
 {
     if (gridFires.isEmpty()) return false;
     int gridPixelSize = tileSize * GRID_SIZE;
-    int minGx = static_cast<int>(rect.left()) / gridPixelSize;
-    int maxGx = static_cast<int>(rect.right()) / gridPixelSize;
-    int minGy = static_cast<int>(rect.top()) / gridPixelSize;
-    int maxGy = static_cast<int>(rect.bottom()) / gridPixelSize;
+    int minGridX = static_cast<int>(rect.left()) / gridPixelSize;
+    int maxGridX = static_cast<int>(rect.right()) / gridPixelSize;
+    int minGridY = static_cast<int>(rect.top()) / gridPixelSize;
+    int maxGridY = static_cast<int>(rect.bottom()) / gridPixelSize;
 
-    for (int gx = minGx; gx <= maxGx; ++gx) {
-        for (int gy = minGy; gy <= maxGy; ++gy) {
+    for (int gx = minGridX; gx <= maxGridX; ++gx) {
+        for (int gy = minGridY; gy <= maxGridY; ++gy) {
             auto it = gridFires.find({gx, gy});
             if (it != gridFires.end()) {
                 for (const QRectF &fireRect : it.value()) {

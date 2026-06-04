@@ -49,6 +49,7 @@ Player::~Player()
 void Player::onFrameChanged(int frame)
 {
     Q_UNUSED(frame);
+    if (keepCastFrame) return;  // 攻击后保持最后一帧
     if (!movie) return;
 
     QPixmap framePixmap = movie->currentPixmap();
@@ -62,7 +63,7 @@ void Player::onFrameChanged(int frame)
     setPixmap(framePixmap);
 
     // 根据等级调整显示大小：1级32×32，2级+64×64
-    int targetSize = (isTiny || level <= 1) ? 32 : 96;
+    int targetSize = (isTiny || level <= 1) ? 32 : 64;
     QSize origSize = framePixmap.size();
     qreal sx = (qreal)targetSize / origSize.width();
     qreal sy = (qreal)targetSize / origSize.height();
@@ -77,6 +78,9 @@ void Player::updateAnimationState(bool moving, bool right, int vDir)
 
     // 施法期间不切换动画
     if (isCasting) return;
+
+    // 移动时清除攻击保持帧和偏移
+    if (moving) { keepCastFrame = false; setOffset(0, 0); }
 
     QString targetPath;
     if (moving) {
@@ -104,11 +108,13 @@ void Player::updateAnimationState(bool moving, bool right, int vDir)
     }
 }
 
-void Player::playCastAnimation(const QString &gifPath, int frameInterval)
+void Player::playCastAnimation(const QString &gifPath, int frameInterval, int displaySize, bool keepFrame)
 {
     if (!isEnhanced || isCasting || !movie) return;
 
-    // 预加载所有帧到内存
+    keepCastFrame = false;  // 允许新动画开始
+    castKeepFrame = keepFrame;
+    castDisplaySize = displaySize;
     castFrames.clear();
     QImageReader reader(gifPath);
     reader.setAutoDetectImageFormat(true);
@@ -116,7 +122,7 @@ void Player::playCastAnimation(const QString &gifPath, int frameInterval)
         QImage img = reader.read();
         if (!img.isNull()) {
             castFrames.append(QPixmap::fromImage(img).scaled(
-                96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                displaySize, displaySize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         }
     }
     if (castFrames.isEmpty()) return;
@@ -125,7 +131,10 @@ void Player::playCastAnimation(const QString &gifPath, int frameInterval)
     castFrameIdx = 0;
     castFrameTick = 0;
     castFrameInterval = qMax(1, frameInterval);
-    movie->stop(); // 暂停正常动画
+    // 居中偏移：大图超出64的部分的一半
+    int offset = (displaySize - 64) / 2;
+    setOffset(-offset, -offset);
+    movie->stop();
 }
 
 void Player::updateCastAnimation()
@@ -145,11 +154,11 @@ void Player::updateCastAnimation()
         castFrameTick = 0;
         castFrameIdx++;
         if (castFrameIdx >= castFrames.size()) {
-            // 播放完毕，恢复原有动画
+            // 播放完毕，根据参数决定是否保持帧
             isCasting = false;
-            castFrames.clear();
+            keepCastFrame = castKeepFrame;
+            if (!castKeepFrame) { setOffset(0, 0); updateAnimationState(isRunning, facingRight, vertDir); }
             currentGifPath.clear();
-            updateAnimationState(isRunning, facingRight, vertDir);
         }
     }
 }
@@ -295,6 +304,14 @@ void Player::restoreState(int lvl, int e, int maxE, int h, int maxH, int m, int 
     maxMp = maxM;
     setEnhanced(enhanced);  // 刷新动画和形态
     qDebug() << "Player state restored: Lv." << level << "HP:" << hp << "/" << maxHp;
+}
+
+void Player::clearCastState()
+{
+    keepCastFrame = false;
+    castFrames.clear();
+    setOffset(0, 0);
+    updateAnimationState(isRunning, facingRight, vertDir);
 }
 
 void Player::setTiny(bool tiny)
